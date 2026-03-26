@@ -58,3 +58,24 @@
 - 至少列出一组可自动执行的检查项。
 - 检查项覆盖接口一致性、单元合法性和“不可再走 DC”这三个核心目标。
 - 通过检查的 candidate 可以直接进入 `sim/` 和 `eval/` 流程。
+
+## 本任务实现落地（Task07 Worktree）
+
+- 提交规范文档：`docs/candidate_submission.md`
+- 检查脚本：`tools/check_candidate_netlist.py`
+- 默认白名单：`tools/allowed_cells.txt`
+- 本地样例：`tools/samples/`
+
+当前脚本覆盖检查项：
+
+- 顶层模块与接口一致性（`mac16x16p32`, `A/B/C/D`, 位宽/方向）
+- 禁止行为级算术构造（`*`, `+`, `always*`）
+- 实例化单元白名单检查（允许外部传入 allowlist）
+- 基础 top 模块合法性检查（唯一 top、禁止 `inout`、黑盒标记检测）
+
+运行方式：
+
+```bash
+python3 tools/check_candidate_netlist.py tools/samples/candidate_ok.v
+python3 tools/check_candidate_netlist.py tools/samples/candidate_bad_arith.v
+```
