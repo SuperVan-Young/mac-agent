@@ -1,0 +1,8 @@
+name: mac-agent-eval
+channels:
+  - litex-hub
+  - conda-forge
+dependencies:
+  - python=3.10
+  - openroad
+  - openroad
