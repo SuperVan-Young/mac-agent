@@ -10,9 +10,9 @@
     "result_summary": {
       "correctness": "pass",
       "timing_status": "fail",
-      "wns": -381.7295,
-      "tns": -9982.5127,
-      "critical_delay": 382.6295,
+      "wns": -0.3817,
+      "tns": -9.9825,
+      "critical_delay": 0.3826,
       "area": 153.0,
       "cell_count": 1716
     }
@@ -28,11 +28,11 @@
     "result_summary": {
       "correctness": "pass",
       "timing_status": "fail",
-      "wns": -1657.7429,
-      "tns": -36559.5273,
-      "critical_delay": 1658.6439,
+      "wns": -0.8585,
+      "tns": -14.6577,
+      "critical_delay": 1.7585,
       "area": 328.0,
-      "cell_count": 2313
+      "cell_count": 2281
     }
   }
 ]

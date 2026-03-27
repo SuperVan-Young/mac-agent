@@ -55,6 +55,13 @@ proc resolve_sta_objects {spec} {
 foreach lib_path [split $::env(LIBERTY_PATHS) ":"] {
   read_liberty $lib_path
 }
+
+# The ASAP7 liberty files declare time in ps, while this repo's public config
+# and SDC intent use ns. Normalize both command parsing and report formatting
+# so create_clock/set_*_delay values and emitted metrics stay in ns.
+set_cmd_units -time ns
+set_units -time ns
+
 read_verilog $::env(NETLIST_PATH)
 link_design $::env(TOP_MODULE)
 read_sdc $::env(SDC_PATH)
