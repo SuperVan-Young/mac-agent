@@ -11,6 +11,9 @@ sim/out_*/
 # Evaluation outputs
 results/
 
+# Generated candidate netlist
+mac16x16p32.v
+
 # Synthesis and formal byproducts
 fv/
 genus.cmd

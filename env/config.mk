@@ -2,7 +2,8 @@ REPO_ROOT ?= $(CURDIR)
 
 DESIGN_NAME ?= candidate_mac16x16p32
 DESIGN_TYPE ?= candidate
-DUT ?= $(REPO_ROOT)/rtl/$(DESIGN_NAME).v
+# Candidate iterations are generated into the repo root by rtl/generate.py.
+DUT ?= $(REPO_ROOT)/mac16x16p32.v
 
 TOP_MODULE ?= mac16x16p32
 

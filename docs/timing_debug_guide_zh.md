@@ -14,7 +14,7 @@
 ## 基本调用
 
 ```bash
-NETLIST_PATH="$(pwd)/rtl/candidate_mac16x16p32.v" \
+NETLIST_PATH="$(pwd)/mac16x16p32.v" \
 LIBERTY_PATHS="$(make -s print-config | awk -F= '/^LIBERTY_PATHS=/{print $2}')" \
 SDC_PATH="$(pwd)/results/fixed/eval_sta/constraints.sdc" \
 TOP_MODULE=mac16x16p32 \
@@ -30,7 +30,7 @@ bash eval/run_timer.sh openroad \
 如果要只看某些输入 pin 到某些输出 pin：
 
 ```bash
-NETLIST_PATH="$(pwd)/rtl/candidate_mac16x16p32.v" \
+NETLIST_PATH="$(pwd)/mac16x16p32.v" \
 LIBERTY_PATHS="$(make -s print-config | awk -F= '/^LIBERTY_PATHS=/{print $2}')" \
 SDC_PATH="$(pwd)/results/fixed/eval_sta/constraints.sdc" \
 TOP_MODULE=mac16x16p32 \

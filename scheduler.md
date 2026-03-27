@@ -40,34 +40,18 @@ Scheduler 必须在 `results/fixed/` 下确认以下文件存在且可读取：
 
 任一条件不满足即拒绝（reject）。
 
-## 3. 归档保留文件（严格限制）
+## 3. optimization_log.json 要求
 
-每次决策都写入 `archive/<timestamp>_<tag>/`。  
-归档中只允许保留以下两种组合之一：
+`optimization_log.json` 为必需修改的文件，必须是合法 UTF-8 JSON 对象。  
+如果本次提交要合入，需要按照先前模板，更新以下字段（必填子段不得丢失，不得使用占位符）：
 
-1. `mac16x16p32.v` + `optimization_log.json`
-2. `rtl/generate.py` + `optimization_log.json`
-
-除上述组合外，不保留其他源码或附加文件。
-
-## 4. optimization_log.json 要求
-
-`optimization_log.json` 为必需文件，必须是合法 UTF-8 JSON 对象。  
-至少包含以下字段：
-
-- `iteration`
-- `metadata`
-- `result_summary`
-
-约束：
-
-- `result_summary` 中的指标字段值必须为数值或 `null`
-- 必填字段不得缺失
-- 不允许使用 `"TBD"` 等占位值
+- `iteration`：本次迭代的序号
+- `metadata`: 包括source, dut, top_module, comment
+- `result_summary`：包括correctness, timing_status, wns, tns, critial_delay, area, cell_count
 
 缺失或格式不合法即拒绝（reject）。
 
-## 5. 合入/拒绝后的 Worktree 清理
+## 4. 合入/拒绝后的 Worktree 清理
 
 在归档写入成功后，必须执行 worker worktree 清理：
 

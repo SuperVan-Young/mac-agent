@@ -1,18 +1,38 @@
-{
-  "iteration": 0,
-  "metadata": {
-    "source": "genus_start",
-    "design_name": "candidate_mac16x16p32_genus",
-    "dut": "rtl/candidate_mac16x16p32_genus.v",
-    "top_module": "mac16x16p32"
+[
+  {
+    "iteration": 0,
+    "metadata": {
+      "source": "baseline",
+      "dut": "baseline.synth.v",
+      "top_module": "mac16x16p32",
+      "comment": "Baseline design synthesized with Cadence Genus."
+    },
+    "result_summary": {
+      "correctness": "pass",
+      "timing_status": "fail",
+      "wns": -381.7295,
+      "tns": -9982.5127,
+      "critical_delay": 382.6295,
+      "area": 153.0,
+      "cell_count": 1716
+    }
   },
-  "result_summary": {
-    "correctness": "pass",
-    "timing_status": "fail",
-    "wns": -381.7295,
-    "tns": -9982.5127,
-    "critical_delay": 382.6295,
-    "area": 153.0,
-    "cell_count": 1716
+  {
+    "iteration": 0,
+    "metadata": {
+      "source": "agent",
+      "dut": "mac16x16p32.v",
+      "top_module": "mac16x16p32",
+      "comment": "The first netlist generator produced by the agent"
+    },
+    "result_summary": {
+      "correctness": "pass",
+      "timing_status": "fail",
+      "wns": -1657.7429,
+      "tns": -36559.5273,
+      "critical_delay": 1658.6439,
+      "area": 328.0,
+      "cell_count": 2313
+    }
   }
-}
+]
