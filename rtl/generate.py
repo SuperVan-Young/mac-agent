@@ -13,7 +13,6 @@ AND2_CELL = "AND2x2_ASAP7_75t_R"
 XOR2_CELL = "XOR2x2_ASAP7_75t_R"
 AO21_CELL = "AO21x1_ASAP7_75t_R"
 MAJ_CELL = "MAJx2_ASAP7_75t_R"
-OUT_BUF_CELL = "BUFx2_ASAP7_75t_R"
 
 
 class NetlistBuilder:
@@ -187,7 +186,7 @@ class NetlistBuilder:
         self.emit("")
         for idx in range(WIDTH):
             sum_wire = self.logic_xor2(carries[idx], bit_p[idx])
-            self.emit_pos_inst(OUT_BUF_CELL, f"D[{idx}]", sum_wire)
+            self.emit(f"assign D[{idx}] = {sum_wire};")
 
         self.emit("endmodule")
         self.emit("")
