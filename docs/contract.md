@@ -58,7 +58,7 @@ Two design categories are supported:
 
 1. Baseline RTL
    - Source file: `rtl/baseline.v`
-   - Purpose: DesignWare-based baseline used to derive a mapped reference netlist through DC.
+   - Purpose: simple reference RTL used to derive a mapped baseline netlist through Genus.
 
 2. Candidate netlist
    - Source file pattern: `rtl/candidate_<tag>.v`

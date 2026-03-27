@@ -88,6 +88,13 @@ def parse_liberty_areas(liberty_text: str) -> dict[str, float]:
     return areas
 
 
+def parse_multiple_liberty_areas(liberty_texts: list[str]) -> dict[str, float]:
+    areas: dict[str, float] = {}
+    for liberty_text in liberty_texts:
+        areas.update(parse_liberty_areas(liberty_text))
+    return areas
+
+
 def _extract_module_bodies(netlist_text: str) -> dict[str, str]:
     modules: dict[str, str] = {}
     for match in MODULE_RE.finditer(netlist_text):
@@ -157,8 +164,8 @@ def count_netlist_cells(netlist_text: str, top: str) -> tuple[dict[str, int], st
     return counts, resolved_top, top_found
 
 
-def compute_area(netlist_text: str, liberty_text: str, top: str) -> dict[str, Any]:
-    areas = parse_liberty_areas(liberty_text)
+def compute_area(netlist_text: str, liberty_texts: list[str], top: str) -> dict[str, Any]:
+    areas = parse_multiple_liberty_areas(liberty_texts)
     cell_counts, resolved_top, top_found = count_netlist_cells(netlist_text, top=top)
 
     area_total = 0.0
@@ -208,7 +215,11 @@ def compute_area(netlist_text: str, liberty_text: str, top: str) -> dict[str, An
 def parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Compute netlist area from liberty cell areas.")
     parser.add_argument("--netlist", required=True, type=Path, help="Input netlist (.v)")
-    parser.add_argument("--liberty", required=True, type=Path, help="Input liberty (.lib)")
+    parser.add_argument(
+        "--liberty",
+        required=True,
+        help="Input liberty (.lib) path, or a colon-separated list of liberty files",
+    )
     parser.add_argument("--top", default="mac16x16p32", help="Top module name")
     parser.add_argument("--out", type=Path, help="Output JSON path (default: stdout)")
     return parser.parse_args(argv)
@@ -216,17 +227,21 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
 
 def main(argv: list[str]) -> int:
     args = parse_args(argv)
+    liberty_paths = [Path(part) for part in args.liberty.split(":") if part]
     result: dict[str, Any] = {
         "netlist": str(args.netlist),
-        "liberty": str(args.liberty),
+        "liberty": [str(path) for path in liberty_paths],
         "top": args.top,
     }
     errors: list[str] = []
 
     if not args.netlist.exists():
         errors.append(f"netlist_not_found:{args.netlist}")
-    if not args.liberty.exists():
-        errors.append(f"liberty_not_found:{args.liberty}")
+    if not liberty_paths:
+        errors.append("liberty_not_found:<empty>")
+    for liberty_path in liberty_paths:
+        if not liberty_path.exists():
+            errors.append(f"liberty_not_found:{liberty_path}")
 
     if errors:
         result.update(
@@ -252,8 +267,11 @@ def main(argv: list[str]) -> int:
 
     try:
         netlist_text = args.netlist.read_text(encoding="utf-8", errors="ignore")
-        liberty_text = args.liberty.read_text(encoding="utf-8", errors="ignore")
-        result.update(compute_area(netlist_text, liberty_text, top=args.top))
+        liberty_texts = [
+            liberty_path.read_text(encoding="utf-8", errors="ignore")
+            for liberty_path in liberty_paths
+        ]
+        result.update(compute_area(netlist_text, liberty_texts, top=args.top))
     except Exception as exc:  # pragma: no cover - defensive runtime path
         result.update(
             {

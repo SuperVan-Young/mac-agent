@@ -101,7 +101,7 @@ def parse_timing_summary(path: Path | None, critical_path_path: Path | None) -> 
     if result["wns"] is None:
         for line in text.splitlines():
             lower = line.lower()
-            if "worst slack" in lower or lower.startswith("wns"):
+            if "worst slack" in lower or lower.startswith("wns") or "slack:=" in lower:
                 result["wns"] = _to_float(line)
                 if result["wns"] is not None:
                     break
@@ -122,6 +122,17 @@ def parse_timing_summary(path: Path | None, critical_path_path: Path | None) -> 
                 result["critical_delay"] = _to_float(line)
                 if result["critical_delay"] is not None:
                     break
+    if result["critical_delay"] is None:
+        arrival = None
+        required = None
+        for line in text.splitlines():
+            lower = line.lower()
+            if "arrival:=" in lower:
+                arrival = _to_float(line)
+            elif "required time:=" in lower:
+                required = _to_float(line)
+        if arrival is not None and required is not None:
+            result["critical_delay"] = arrival
 
     if result["wns"] is None:
         result["timing_status"] = "unknown"
@@ -133,17 +144,18 @@ def parse_timing_summary(path: Path | None, critical_path_path: Path | None) -> 
     return result
 
 
-def compute_area_from_inputs(netlist: Path | None, liberty: Path | None, top: str) -> dict[str, Any]:
+def compute_area_from_inputs(netlist: Path | None, liberty: str | None, top: str) -> dict[str, Any]:
     result = {"area": None, "cell_count": 0, "area_status": "not_run"}
     if not netlist or not liberty:
         return result
-    if not netlist.exists() or not liberty.exists():
+    liberty_paths = [Path(part) for part in liberty.split(":") if part]
+    if not netlist.exists() or not liberty_paths or any(not path.exists() for path in liberty_paths):
         result["area_status"] = "missing_input"
         return result
 
     payload = compute_area(
         netlist.read_text(encoding="utf-8", errors="ignore"),
-        liberty.read_text(encoding="utf-8", errors="ignore"),
+        [path.read_text(encoding="utf-8", errors="ignore") for path in liberty_paths],
         top=top,
     )
     result["area"] = payload.get("area")
@@ -188,7 +200,10 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--critical-path", type=Path, help="Critical path report path")
     parser.add_argument("--area-json", type=Path, help="Existing area report JSON path")
     parser.add_argument("--netlist", type=Path, help="Netlist path for area calculation")
-    parser.add_argument("--liberty", type=Path, help="Liberty path for area calculation")
+    parser.add_argument(
+        "--liberty",
+        help="Liberty path or colon-separated liberty file list for area calculation",
+    )
     parser.add_argument("--sim-runtime-sec", type=float)
     parser.add_argument("--eval-runtime-sec", type=float)
     parser.add_argument("--write-csv", action="store_true", help="Also emit summary.csv")
