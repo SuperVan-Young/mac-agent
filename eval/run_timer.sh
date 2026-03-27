@@ -4,7 +4,7 @@ set -euo pipefail
 usage() {
   cat <<'USAGE'
 Usage:
-  eval/run_timer.sh openroad
+  eval/run_timer.sh openroad [--max-paths N] [--endpoint-count N] [--from PINS] [--to PINS] [--output-report PATH]
 
 This is a low-level timing wrapper intended to be called by Makefile.
 Required environment variables:
@@ -17,6 +17,15 @@ Required environment variables:
 
 Optional environment variables:
   OPENROAD_CONDA_PREFIX
+  TIMING_QUERY_MAX_PATHS
+  TIMING_QUERY_ENDPOINT_COUNT
+  TIMING_QUERY_FROM
+  TIMING_QUERY_TO
+  TIMING_QUERY_OUTPUT_REPORT
+
+Query option notes:
+  --from/--to accept comma-separated pin/port names or OpenSTA patterns.
+  Literal bus bits such as A[15] are supported.
 USAGE
 }
 
@@ -30,14 +39,74 @@ require_env() {
   [[ -n "${!name:-}" ]] || die "Missing environment variable: ${name}"
 }
 
-[[ $# -eq 1 ]] || { usage >&2; exit 2; }
+require_int() {
+  local name="$1"
+  local value="$2"
+  [[ "${value}" =~ ^[1-9][0-9]*$ ]] || die "${name} must be a positive integer: ${value}"
+}
+
+[[ $# -ge 1 ]] || { usage >&2; exit 2; }
 TOOL="$1"
+shift
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 OPENROAD_CONDA_PREFIX="${OPENROAD_CONDA_PREFIX:-/tmp/mac-agent-openroad-env}"
+TIMING_QUERY_MAX_PATHS="${TIMING_QUERY_MAX_PATHS:-1}"
+TIMING_QUERY_ENDPOINT_COUNT="${TIMING_QUERY_ENDPOINT_COUNT:-}"
+TIMING_QUERY_FROM="${TIMING_QUERY_FROM:-}"
+TIMING_QUERY_TO="${TIMING_QUERY_TO:-}"
+TIMING_QUERY_OUTPUT_REPORT="${TIMING_QUERY_OUTPUT_REPORT:-}"
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --max-paths)
+      [[ $# -ge 2 ]] || die "Missing value for $1"
+      TIMING_QUERY_MAX_PATHS="$2"
+      shift 2
+      ;;
+    --endpoint-count)
+      [[ $# -ge 2 ]] || die "Missing value for $1"
+      TIMING_QUERY_ENDPOINT_COUNT="$2"
+      shift 2
+      ;;
+    --from)
+      [[ $# -ge 2 ]] || die "Missing value for $1"
+      TIMING_QUERY_FROM="$2"
+      shift 2
+      ;;
+    --to)
+      [[ $# -ge 2 ]] || die "Missing value for $1"
+      TIMING_QUERY_TO="$2"
+      shift 2
+      ;;
+    --output-report)
+      [[ $# -ge 2 ]] || die "Missing value for $1"
+      TIMING_QUERY_OUTPUT_REPORT="$2"
+      shift 2
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      die "Unknown option: $1"
+      ;;
+  esac
+done
 
 for var in NETLIST_PATH LIBERTY_PATHS SDC_PATH TOP_MODULE TIMING_SUMMARY_REPORT CRITICAL_PATH_REPORT; do
   require_env "$var"
 done
+
+require_int "TIMING_QUERY_MAX_PATHS" "${TIMING_QUERY_MAX_PATHS}"
+if [[ -n "${TIMING_QUERY_ENDPOINT_COUNT}" ]]; then
+  require_int "TIMING_QUERY_ENDPOINT_COUNT" "${TIMING_QUERY_ENDPOINT_COUNT}"
+fi
+
+export TIMING_QUERY_MAX_PATHS
+export TIMING_QUERY_ENDPOINT_COUNT
+export TIMING_QUERY_FROM
+export TIMING_QUERY_TO
+export TIMING_QUERY_OUTPUT_REPORT
 
 case "${TOOL}" in
   openroad)

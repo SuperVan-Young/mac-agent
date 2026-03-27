@@ -88,6 +88,48 @@ bash eval/run_timer.sh openroad
 这个脚本通常不需要手工调用，由 `make timing` 负责注入环境变量。
 项目不再维护单独的 `opentimer` 后端。
 
+### 可选的路径查询接口
+
+默认 `make timing` 仍然只生成一份全局最差路径报告，不额外开启多路径/定向路径分析。
+如果后续 worker 需要做局部调优，可以直接手工调用同一个脚本接口：
+
+```bash
+NETLIST_PATH="$(pwd)/rtl/candidate_seed.v" \
+LIBERTY_PATHS="$(make -s print-config | awk -F= '/^LIBERTY_PATHS=/{print $2}')" \
+SDC_PATH="$(pwd)/results/candidate_seed/eval_sta/constraints.sdc" \
+TOP_MODULE=mac16x16p32 \
+TIMING_SUMMARY_REPORT="$(pwd)/results/candidate_seed/eval_sta/timing_query_summary.rpt" \
+CRITICAL_PATH_REPORT="$(pwd)/results/candidate_seed/eval_sta/critical_path.rpt" \
+bash eval/run_timer.sh openroad \
+  --max-paths 5 \
+  --output-report "$(pwd)/results/candidate_seed/eval_sta/top5_paths.rpt"
+```
+
+按输入/输出端点约束路径时，可再追加 `--from/--to`：
+
+```bash
+NETLIST_PATH="$(pwd)/rtl/candidate_seed.v" \
+LIBERTY_PATHS="$(make -s print-config | awk -F= '/^LIBERTY_PATHS=/{print $2}')" \
+SDC_PATH="$(pwd)/results/candidate_seed/eval_sta/constraints.sdc" \
+TOP_MODULE=mac16x16p32 \
+TIMING_SUMMARY_REPORT="$(pwd)/results/candidate_seed/eval_sta/timing_query_summary.rpt" \
+CRITICAL_PATH_REPORT="$(pwd)/results/candidate_seed/eval_sta/critical_path.rpt" \
+bash eval/run_timer.sh openroad \
+  --from 'A[15],B[15]' \
+  --to 'D[31]' \
+  --max-paths 3 \
+  --output-report "$(pwd)/results/candidate_seed/eval_sta/a15_b15_to_d31.rpt"
+```
+
+约定如下：
+
+- `--max-paths N` 映射到 OpenSTA `report_checks -group_count N`
+- `--endpoint-count N` 可选，映射到 `report_checks -endpoint_count N`
+- `--from/--to` 接受逗号分隔的 pin/port 名称，也接受 OpenSTA pattern
+- bus bit 字面量如 `A[15]`、`D[31]` 会优先按精确名字解析，不需要额外转义
+- `TIMING_SUMMARY_REPORT` 仍会输出 `wns/tns/critical_delay`，其中 `critical_delay` 对应这次查询报告中的第一条 path
+- 该接口是手工调试入口，不会被默认 `Makefile` 目标自动调用
+
 ## 底层 area 入口
 
 ```bash

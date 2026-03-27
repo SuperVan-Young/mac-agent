@@ -52,3 +52,9 @@ make all DESIGN_NAME=candidate_xxx DUT=$(pwd)/rtl/candidate_xxx.v
 5. `summary`
 
 如果仓库内存在 repo-local ASAP7 liberty bundle，`check` 会自动用它构建 allowlist。
+
+补充说明：
+
+- 默认 `timing` 目标只生成一份全局最差 critical path 报告
+- 如需输出多条 path，或只查看指定输入/输出 pin 之间的路径，请手工使用 [docs/openroad_eval_guide_zh.md](/tmp/mac-agent-sta-paths/docs/openroad_eval_guide_zh.md) 中的 `eval/run_timer.sh` 查询接口
+- 该查询接口面向将来的 worker 调优使用，不默认接入 `Makefile`
