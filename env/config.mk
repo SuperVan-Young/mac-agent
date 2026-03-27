@@ -1,6 +1,6 @@
 REPO_ROOT ?= $(CURDIR)
 
-DESIGN_NAME ?= candidate_seed
+DESIGN_NAME ?= candidate_mac16x16p32
 DESIGN_TYPE ?= candidate
 DUT ?= $(REPO_ROOT)/rtl/$(DESIGN_NAME).v
 

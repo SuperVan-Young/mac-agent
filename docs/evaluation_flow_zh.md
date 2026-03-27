@@ -38,6 +38,11 @@ candidate 不允许再跑综合工具，推荐直接用 `make all`。
 make all DESIGN_NAME=candidate_xxx DUT=$(pwd)/rtl/candidate_xxx.v
 ```
 
+默认配置下，candidate 指向：
+
+- `DESIGN_NAME=candidate_mac16x16p32`
+- `DUT=rtl/candidate_mac16x16p32.v`
+
 默认顺序是：
 
 1. `check`

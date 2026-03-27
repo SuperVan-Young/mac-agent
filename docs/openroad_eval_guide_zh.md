@@ -29,6 +29,8 @@ bash env/setup_openroad_conda.sh --prefix /tmp/mac-agent-openroad-env --skip-ins
 
 - conda 环境路径
 - 顶层模块名
+- 默认 candidate 设计名（`candidate_mac16x16p32`）
+- 默认 candidate DUT（`rtl/candidate_mac16x16p32.v`）
 - 目标周期
 - 输入输出 delay
 - 默认 liberty bundle

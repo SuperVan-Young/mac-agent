@@ -50,13 +50,19 @@ bash sim/run_rtl_sim.sh -d rtl/candidate_xxx.v
 示例：
 
 ```bash
-bash sim/run_rtl_sim.sh -d rtl/candidate_seed.v -n 2000 -s 7
+bash sim/run_rtl_sim.sh -d rtl/candidate_mac16x16p32.v -n 2000 -s 7
 ```
 
 并行多 seed 示例：
 
 ```bash
-bash sim/run_rtl_sim.sh -d rtl/candidate_seed.v -n 5000 -S 1,2,3,4 -j 4
+bash sim/run_rtl_sim.sh -d rtl/candidate_mac16x16p32.v -n 5000 -S 1,2,3,4 -j 4
+```
+
+如果需要使用保留的 Genus 导出版候选网表，可改为：
+
+```bash
+bash sim/run_rtl_sim.sh -d rtl/candidate_mac16x16p32_genus.v -n 2000 -s 7
 ```
 
 脚本会为每个 seed 生成单独目录 `seed_<n>/`，只有所有 seed 都通过时，整体仿真才返回通过。
