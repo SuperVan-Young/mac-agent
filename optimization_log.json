@@ -89,6 +89,24 @@
         "area": 163.0,
         "cell_count": 1314
       }
+    },
+    {
+      "iteration": 4,
+      "metadata": {
+        "source": "agent",
+        "dut": "mac16x16p32.v",
+        "top_module": "mac16x16p32",
+        "comment": "Promoted worker-round-3 after downsizing only the compression-tree XOR instances to XOR2xp5 while preserving the faster XOR2x2 cells in the prefix and final sum network."
+      },
+      "result_summary": {
+        "correctness": "pass",
+        "timing_status": "pass",
+        "wns": 0.1914,
+        "tns": 0.0,
+        "critical_delay": 0.7086,
+        "area": 150.0,
+        "cell_count": 1314
+      }
     }
   ]
 }
