@@ -11,6 +11,7 @@ OUT_PATH = Path("mac16x16p32.v")
 WIDTH = 32
 AND2_CELL = "AND2x2_ASAP7_75t_R"
 XOR2_CELL = "XOR2x2_ASAP7_75t_R"
+COMPRESS_XOR2_CELL = "XOR2xp5_ASAP7_75t_R"
 AO21_CELL = "AO21x1_ASAP7_75t_R"
 MAJ_CELL = "MAJx2_ASAP7_75t_R"
 
@@ -42,14 +43,14 @@ class NetlistBuilder:
         self.emit_pos_inst(AND2_CELL, out, a, b)
         return out
 
-    def logic_xor2(self, a: str, b: str) -> str:
+    def logic_xor2(self, a: str, b: str, cell: str = XOR2_CELL) -> str:
         if a == self.zero:
             return b
         if b == self.zero:
             return a
         out = self.new_wire("xor")
         self.emit(f"wire {out};")
-        self.emit_pos_inst(XOR2_CELL, out, a, b)
+        self.emit_pos_inst(cell, out, a, b)
         return out
 
     def logic_ao21(self, a1: str, a2: str, b: str) -> str:
@@ -75,14 +76,18 @@ class NetlistBuilder:
         return out
 
     def logic_xor3(self, a: str, b: str, c: str) -> str:
-        return self.logic_xor2(self.logic_xor2(a, b), c)
+        return self.logic_xor2(
+            self.logic_xor2(a, b, cell=COMPRESS_XOR2_CELL),
+            c,
+            cell=COMPRESS_XOR2_CELL,
+        )
 
     def half_adder(self, a: str, b: str) -> tuple[str, str]:
         if a == self.zero:
             return b, self.zero
         if b == self.zero:
             return a, self.zero
-        sum_wire = self.logic_xor2(a, b)
+        sum_wire = self.logic_xor2(a, b, cell=COMPRESS_XOR2_CELL)
         carry_wire = self.logic_and(a, b)
         return sum_wire, carry_wire
 
