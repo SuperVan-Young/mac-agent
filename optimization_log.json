@@ -1,38 +1,58 @@
-[
-  {
-    "iteration": 0,
-    "metadata": {
-      "source": "baseline",
-      "dut": "baseline.synth.v",
-      "top_module": "mac16x16p32",
-      "comment": "Baseline design synthesized with Cadence Genus."
+{
+  "history": [
+    {
+      "iteration": 0,
+      "metadata": {
+        "source": "baseline",
+        "dut": "baseline.synth.v",
+        "top_module": "mac16x16p32",
+        "comment": "Baseline design synthesized with Cadence Genus."
+      },
+      "result_summary": {
+        "correctness": "pass",
+        "timing_status": "pass",
+        "wns": 0.4175,
+        "tns": 0.0,
+        "critical_delay": 0.4825,
+        "area": 153.0,
+        "cell_count": 1716
+      }
     },
-    "result_summary": {
-      "correctness": "pass",
-      "timing_status": "fail",
-      "wns": -0.3817,
-      "tns": -9.9825,
-      "critical_delay": 0.3826,
-      "area": 153.0,
-      "cell_count": 1716
-    }
-  },
-  {
-    "iteration": 0,
-    "metadata": {
-      "source": "agent",
-      "dut": "mac16x16p32.v",
-      "top_module": "mac16x16p32",
-      "comment": "The first netlist generator produced by the agent"
+    {
+      "iteration": 0,
+      "metadata": {
+        "source": "agent",
+        "dut": "mac16x16p32.v",
+        "top_module": "mac16x16p32",
+        "comment": "The first netlist generator produced by the agent"
+      },
+      "result_summary": {
+        "correctness": "pass",
+        "timing_status": "fail",
+        "wns": -0.8585,
+        "tns": -14.6577,
+        "critical_delay": 1.7585,
+        "area": 328.0,
+        "cell_count": 2281
+      }
     },
-    "result_summary": {
-      "correctness": "pass",
-      "timing_status": "fail",
-      "wns": -0.8585,
-      "tns": -14.6577,
-      "critical_delay": 1.7585,
-      "area": 328.0,
-      "cell_count": 2281
+    {
+      "iteration": 1,
+      "metadata": {
+        "source": "agent",
+        "dut": "mac16x16p32.v",
+        "top_module": "mac16x16p32",
+        "comment": "Replaced decomposed carry and prefix merge logic with MAJx2 and AO21x2 cells while preserving the structural MAC topology."
+      },
+      "result_summary": {
+        "correctness": "pass",
+        "timing_status": "pass",
+        "wns": 0.0385,
+        "tns": 0.0,
+        "critical_delay": 0.8615,
+        "area": 189.0,
+        "cell_count": 1293
+      }
     }
-  }
-]
+  ]
+}

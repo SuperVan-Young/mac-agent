@@ -43,11 +43,44 @@ Scheduler 必须在 `results/fixed/` 下确认以下文件存在且可读取：
 ## 3. optimization_log.json 要求
 
 `optimization_log.json` 为必需修改的文件，必须是合法 UTF-8 JSON 对象。  
-如果本次提交要合入，需要按照先前模板，更新以下字段（必填子段不得丢失，不得使用占位符）：
+为兼容历史保留与后续追加，统一采用如下结构：
+
+```json
+{
+  "history": [
+    {
+      "iteration": 0,
+      "metadata": {
+        "source": "baseline",
+        "dut": "baseline.synth.v",
+        "top_module": "mac16x16p32",
+        "comment": "Baseline design synthesized with Cadence Genus."
+      },
+      "result_summary": {
+        "correctness": "pass",
+        "timing_status": "fail",
+        "wns": -0.3817,
+        "tns": -9.9825,
+        "critical_delay": 0.3826,
+        "area": 153.0,
+        "cell_count": 1716
+      }
+    }
+  ]
+}
+```
+
+如果本次提交要合入，需要向 `history` 追加一条新记录。每条记录的必填字段如下（不得丢失，不得使用占位符）：
 
 - `iteration`：本次迭代的序号
-- `metadata`: 包括source, dut, top_module, comment
-- `result_summary`：包括correctness, timing_status, wns, tns, critial_delay, area, cell_count
+- `metadata`: 包括 `source`, `dut`, `top_module`, `comment`
+- `result_summary`：包括 `correctness`, `timing_status`, `wns`, `tns`, `critical_delay`, `area`, `cell_count`
+
+额外要求：
+
+- 顶层必须为对象，且包含 `history` 数组
+- `history` 中的历史记录按时间顺序追加，禁止覆盖旧记录
+- 新记录的 `iteration` 必须不小于已有最大值；若是同一轮次的正式合入版本，需在 `comment` 中说明来源或原因
 
 缺失或格式不合法即拒绝（reject）。
 

@@ -62,15 +62,34 @@ class NetlistBuilder:
         self.emit_inst("XOR2x2_ASAP7_75t_R", out, a, b)
         return out
 
+    def logic_ao21(self, a1: str, a2: str, b: str) -> str:
+        if a1 == self.zero or a2 == self.zero:
+            return b
+        if b == self.zero:
+            return self.logic_and(a1, a2)
+        out = self.new_wire("ao21")
+        self.emit(f"wire {out};")
+        self.emit_inst("AO21x2_ASAP7_75t_R", out, a1, a2, b)
+        return out
+
+    def logic_maj3(self, a: str, b: str, c: str) -> str:
+        if a == self.zero:
+            return self.logic_and(b, c)
+        if b == self.zero:
+            return self.logic_and(a, c)
+        if c == self.zero:
+            return self.logic_and(a, b)
+        out = self.new_wire("maj")
+        self.emit(f"wire {out};")
+        self.emit_inst("MAJx2_ASAP7_75t_R", out, a, b, c)
+        return out
+
     def logic_xor3(self, a: str, b: str, c: str) -> str:
         return self.logic_xor2(self.logic_xor2(a, b), c)
 
     def full_adder(self, a: str, b: str, c: str) -> tuple[str, str]:
         sum_wire = self.logic_xor3(a, b, c)
-        ab = self.logic_and(a, b)
-        ac = self.logic_and(a, c)
-        bc = self.logic_and(b, c)
-        carry_wire = self.logic_or(self.logic_or(ab, ac), bc)
+        carry_wire = self.logic_maj3(a, b, c)
         return sum_wire, carry_wire
 
     def build(self) -> str:
@@ -128,11 +147,13 @@ class NetlistBuilder:
             else:
                 row_b.append(self.zero)
 
+        bit_p: list[str] = []
         p_prev: list[str] = []
         g_prev: list[str] = []
         for idx in range(WIDTH):
             p = self.logic_xor2(row_a[idx], row_b[idx])
             g = self.logic_and(row_a[idx], row_b[idx])
+            bit_p.append(p)
             p_prev.append(p)
             g_prev.append(g)
 
@@ -145,7 +166,7 @@ class NetlistBuilder:
                     g = g_prev[idx]
                 else:
                     p = self.logic_and(p_prev[idx], p_prev[idx - distance])
-                    g = self.logic_or(g_prev[idx], self.logic_and(p_prev[idx], g_prev[idx - distance]))
+                    g = self.logic_ao21(p_prev[idx], g_prev[idx - distance], g_prev[idx])
                 p_next.append(p)
                 g_next.append(g)
             p_prev = p_next
@@ -157,7 +178,7 @@ class NetlistBuilder:
 
         self.emit("")
         for idx in range(WIDTH):
-            sum_wire = self.logic_xor3(carries[idx], row_a[idx], row_b[idx])
+            sum_wire = self.logic_xor2(carries[idx], bit_p[idx])
             self.emit_inst("BUFx4_ASAP7_75t_R", f"D[{idx}]", sum_wire)
 
         self.emit("endmodule")
