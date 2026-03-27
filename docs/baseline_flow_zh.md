@@ -54,6 +54,11 @@ results/fixed/
 - `results/fixed/eval_sta/timing_summary.rpt`
 - `results/fixed/eval_sta/critical_path.rpt`
 - `results/fixed/eval_sta/design_area.rpt`
+- `results/fixed/eval_sta/cell_usage.rpt`
+- `results/fixed/eval_sta/instance_area.csv`
+- `results/fixed/eval_sta/cell_area_breakdown.rpt`
+- `results/fixed/eval_sta/module_area_breakdown.rpt`
+- `results/fixed/eval_sta/instance_group_area_breakdown.rpt`
 - `results/fixed/area.json`
 
 ## 说明

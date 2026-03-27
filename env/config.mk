@@ -46,3 +46,7 @@ AREA_JSON ?= $(RESULTS_DIR)/area.json
 AREA_LOG ?= $(LOG_DIR)/area.log
 AREA_TOTAL_REPORT ?= $(EVAL_OUT_DIR)/design_area.rpt
 AREA_BREAKDOWN_REPORT ?= $(EVAL_OUT_DIR)/cell_usage.rpt
+AREA_INSTANCE_CSV ?= $(EVAL_OUT_DIR)/instance_area.csv
+AREA_CELL_DETAIL_REPORT ?= $(EVAL_OUT_DIR)/cell_area_breakdown.rpt
+AREA_MODULE_DETAIL_REPORT ?= $(EVAL_OUT_DIR)/module_area_breakdown.rpt
+AREA_GROUP_DETAIL_REPORT ?= $(EVAL_OUT_DIR)/instance_group_area_breakdown.rpt

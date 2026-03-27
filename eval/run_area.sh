@@ -15,6 +15,10 @@ Required environment variables:
   AREA_LOG
   AREA_TOTAL_REPORT
   AREA_BREAKDOWN_REPORT
+  AREA_INSTANCE_CSV
+  AREA_CELL_DETAIL_REPORT
+  AREA_MODULE_DETAIL_REPORT
+  AREA_GROUP_DETAIL_REPORT
   AREA_JSON
 
 Optional environment variables:
@@ -36,7 +40,7 @@ require_env() {
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 OPENROAD_CONDA_PREFIX="${OPENROAD_CONDA_PREFIX:-/tmp/mac-agent-openroad-env}"
 
-for var in NETLIST_PATH LEF_PATHS LIBERTY_PATHS TOP_MODULE AREA_LOG AREA_TOTAL_REPORT AREA_BREAKDOWN_REPORT AREA_JSON; do
+for var in NETLIST_PATH LEF_PATHS LIBERTY_PATHS TOP_MODULE AREA_LOG AREA_TOTAL_REPORT AREA_BREAKDOWN_REPORT AREA_INSTANCE_CSV AREA_CELL_DETAIL_REPORT AREA_MODULE_DETAIL_REPORT AREA_GROUP_DETAIL_REPORT AREA_JSON; do
   require_env "$var"
 done
 
@@ -50,6 +54,13 @@ conda run -p "${OPENROAD_CONDA_PREFIX}" openroad \
 
 python3 "${SCRIPT_DIR}/openroad_area_report.py" \
   --openroad-log "${AREA_LOG}" \
+  --netlist "${NETLIST_PATH}" \
+  --liberty-paths "${LIBERTY_PATHS}" \
+  --top-module "${TOP_MODULE}" \
   --design-area-rpt "${AREA_TOTAL_REPORT}" \
   --cell-usage-rpt "${AREA_BREAKDOWN_REPORT}" \
+  --instance-area-csv "${AREA_INSTANCE_CSV}" \
+  --cell-area-rpt "${AREA_CELL_DETAIL_REPORT}" \
+  --module-area-rpt "${AREA_MODULE_DETAIL_REPORT}" \
+  --group-area-rpt "${AREA_GROUP_DETAIL_REPORT}" \
   --out "${AREA_JSON}"
