@@ -1,0 +1,20 @@
+.rs_xuechenhao.tstamp
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Simulation outputs
+sim/out/
+
+# Evaluation outputs
+results/
+
+# Synthesis and formal byproducts
+fv/
+genus.cmd
+genus.log
+
+# Generated baseline outputs
+syn/outputs/*.v
+syn/reports/*.rpt
