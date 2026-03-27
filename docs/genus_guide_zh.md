@@ -34,6 +34,10 @@ GENUS_DRY_RUN=1 tclsh syn/run.tcl
 - `GENUS_RTL`
 - `GENUS_LIB`
 - `GENUS_CLK_PERIOD`
+- `GENUS_A_WIDTH`
+- `GENUS_B_WIDTH`
+- `GENUS_ACC_WIDTH`
+- `GENUS_PIPELINE_CYCLES`
 - `GENUS_OUT_DIR`
 - `GENUS_RPT_DIR`
 
@@ -41,6 +45,16 @@ GENUS_DRY_RUN=1 tclsh syn/run.tcl
 
 ```bash
 GENUS_CLK_PERIOD=0.8 genus -no_gui -files syn/run.tcl
+```
+
+位宽和流水示例：
+
+```bash
+GENUS_A_WIDTH=16 \
+GENUS_B_WIDTH=16 \
+GENUS_ACC_WIDTH=32 \
+GENUS_PIPELINE_CYCLES=1 \
+genus -no_gui -files syn/run.tcl
 ```
 
 ## 默认输出

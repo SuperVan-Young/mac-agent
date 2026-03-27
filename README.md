@@ -1,6 +1,6 @@
 # Integer MAC 评估框架
 
-目标函数固定为 `D = A * B + C`，其中 `A/B` 为 16-bit，`C/D` 为 32-bit，顶层模块名固定为 `mac16x16p32`。
+目标函数为 `D = A * B + C`。candidate 契约接口固定为 `A/B=16-bit`、`C/D=32-bit`、顶层 `mac16x16p32`；baseline 在 Make/config 中支持可配置位宽与 pipeline（默认仍为 `16x16->32`, cycle=1）。
 
 执行说明放在 `docs/`：
 

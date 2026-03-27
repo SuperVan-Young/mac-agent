@@ -4,20 +4,28 @@
 
 ## 评测一个 baseline
 
-### 1. baseline 综合
-
-```bash
-genus -no_gui -files syn/run.tcl
-```
-
-### 2. baseline 评测
+`baseline` 现在可由 `make all` 串联完整流程（综合+仿真+STA+面积+汇总）：
 
 ```bash
 make all \
-  DESIGN_NAME=baseline_mapped \
+  DESIGN_NAME=baseline \
   DESIGN_TYPE=baseline \
-  DUT=$(pwd)/syn/outputs/baseline_mapped.v \
+  DUT=$(pwd)/rtl/baseline.v \
   CHECK_ENABLE=0
+```
+
+可配置参数（默认 `A/B=16`、`ACC=32`、`pipeline=1`）：
+
+```bash
+make all \
+  DESIGN_NAME=baseline \
+  DESIGN_TYPE=baseline \
+  DUT=$(pwd)/rtl/baseline.v \
+  CHECK_ENABLE=0 \
+  MAC_A_WIDTH=16 \
+  MAC_B_WIDTH=16 \
+  MAC_ACC_WIDTH=32 \
+  MAC_PIPELINE_CYCLES=1
 ```
 
 ## 评测一个 candidate

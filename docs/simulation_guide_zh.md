@@ -40,11 +40,21 @@ bash sim/run_rtl_sim.sh -d rtl/candidate_xxx.v
 - `-n`：随机向量数量，默认 `5000`
 - `-s`：随机种子
 - `-o`：输出目录，默认 `sim/out`
+- `-a`：A 输入位宽，默认 `16`
+- `-b`：B 输入位宽，默认 `16`
+- `-w`：C/D 累加位宽，默认 `32`
+- `-p`：pipeline cycle，默认 `1`（当 `baseline` 且 `p>1` 时启用时序流水检查）
 
 示例：
 
 ```bash
 bash sim/run_rtl_sim.sh -d rtl/candidate_seed.v -n 2000 -s 7
+```
+
+baseline 可配置位宽/流水示例：
+
+```bash
+bash sim/run_rtl_sim.sh -d rtl/baseline.v -n 2000 -s 7 -a 16 -b 16 -w 32 -p 1
 ```
 
 ## 成功判定

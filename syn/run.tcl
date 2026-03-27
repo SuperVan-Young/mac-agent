@@ -5,6 +5,10 @@
 #   GENUS_RTL             (default: <repo>/rtl/baseline.v)
 #   GENUS_LIB             (default: repo-local ASAP7 TT/RVT liberty bundle, colon-separated)
 #   GENUS_CLK_PERIOD      (default: 1.0, ns)
+#   GENUS_A_WIDTH         (default: 16)
+#   GENUS_B_WIDTH         (default: 16)
+#   GENUS_ACC_WIDTH       (default: 32)
+#   GENUS_PIPELINE_CYCLES (default: 1)
 #   GENUS_OUT_DIR         (default: syn/outputs)
 #   GENUS_RPT_DIR         (default: syn/reports)
 #   GENUS_DRY_RUN         (default: 0; if 1, parse-only sanity mode)
@@ -31,6 +35,10 @@ set RTL_FILE      [env_or_default GENUS_RTL [file join $repo_root rtl baseline.v
 set LIB_FILES_RAW [env_or_default GENUS_LIB $DEFAULT_LIB_FILES]
 set LIB_FILES     [split $LIB_FILES_RAW ":"]
 set CLK_PERIOD_NS [env_or_default GENUS_CLK_PERIOD 1.0]
+set A_WIDTH       [env_or_default GENUS_A_WIDTH 16]
+set B_WIDTH       [env_or_default GENUS_B_WIDTH 16]
+set ACC_WIDTH     [env_or_default GENUS_ACC_WIDTH 32]
+set PIPELINE_CYCLES [env_or_default GENUS_PIPELINE_CYCLES 1]
 set OUT_DIR       [env_or_default GENUS_OUT_DIR [file join $script_dir outputs]]
 set RPT_DIR       [env_or_default GENUS_RPT_DIR [file join $script_dir reports]]
 set DRY_RUN_FLAG  [env_or_default GENUS_DRY_RUN 0]
@@ -50,6 +58,10 @@ if {$DRY_RUN} {
     puts "Resolved TOP: $TOP_NAME"
     puts "Resolved RTL: $RTL_FILE"
     puts "Resolved LIBS: $LIB_FILES_RAW"
+    puts "Resolved A_WIDTH: $A_WIDTH"
+    puts "Resolved B_WIDTH: $B_WIDTH"
+    puts "Resolved ACC_WIDTH: $ACC_WIDTH"
+    puts "Resolved PIPELINE_CYCLES: $PIPELINE_CYCLES"
     puts "Resolved OUT_DIR: $OUT_DIR"
     puts "Resolved RPT_DIR: $RPT_DIR"
     exit 0
@@ -57,12 +69,28 @@ if {$DRY_RUN} {
 
 set_db library $LIB_FILES
 
-read_hdl $RTL_FILE
+set HDL_DEFINES [list \
+    "MAC_A_WIDTH=$A_WIDTH" \
+    "MAC_B_WIDTH=$B_WIDTH" \
+    "MAC_ACC_WIDTH=$ACC_WIDTH" \
+    "MAC_PIPELINE_CYCLES=$PIPELINE_CYCLES" \
+]
+if {$PIPELINE_CYCLES > 1} {
+    lappend HDL_DEFINES "MAC_USE_CLK=1"
+}
+
+read_hdl -define $HDL_DEFINES $RTL_FILE
 elaborate $TOP_NAME
 current_design $TOP_NAME
 
-# Combinational baseline: constrain input->output max delay as a simple target.
-set_max_delay $CLK_PERIOD_NS -from [all_inputs] -to [all_outputs]
+if {$PIPELINE_CYCLES > 1} {
+    create_clock -name VCLK -period $CLK_PERIOD_NS [get_ports clk]
+    set_input_delay [expr {$CLK_PERIOD_NS * 0.1}] -clock VCLK [remove_from_collection [all_inputs] [get_ports clk]]
+    set_output_delay [expr {$CLK_PERIOD_NS * 0.1}] -clock VCLK [all_outputs]
+} else {
+    # Combinational baseline: constrain input->output max delay as a simple target.
+    set_max_delay $CLK_PERIOD_NS -from [all_inputs] -to [all_outputs]
+}
 
 syn_generic
 syn_map

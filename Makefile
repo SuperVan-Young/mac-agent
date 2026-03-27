@@ -6,22 +6,34 @@ ifneq ($(strip $(CONFIG)),)
 include $(CONFIG)
 endif
 
-.PHONY: help print-config dirs check sim generate-sdc timing area summary all clean
+SYN_OUT_DIR ?= $(REPO_ROOT)/syn/outputs
+SYN_RPT_DIR ?= $(REPO_ROOT)/syn/reports
+SYN_LOG ?= $(RESULTS_DIR)/synth.log
+
+ifeq ($(DESIGN_TYPE),baseline)
+EVAL_NETLIST ?= $(SYN_OUT_DIR)/baseline_mapped.v
+else
+EVAL_NETLIST ?= $(DUT)
+endif
+
+.PHONY: help print-config dirs check sim synth generate-sdc timing area summary all clean
 
 help:
 	@printf '%s\n' \
 	  'Usage: make [target] [CONFIG=/path/to/config.mk]' \
 	  '' \
 	  'Core targets:' \
-	  '  make all            # check -> sim -> timing/area -> summary' \
+	  '  make all            # baseline: synth/check/sim/timing/area/summary; candidate: check/sim/timing/area/summary' \
 	  '  make check          # candidate legality check' \
 	  '  make sim            # RTL/gate simulation' \
-	  '  make timing         # timing analysis via $(TIMING_TOOL)' \
+	  '  make synth          # baseline synthesis (Genus)' \
+	  '  make timing         # timing analysis via OpenROAD package' \
 	  '  make area           # liberty-based area analysis' \
 	  '  make summary        # aggregate reports into summary.json/csv' \
 	  '' \
 	  'Useful variables (override in CONFIG or on CLI):' \
 	  '  DESIGN_NAME, DESIGN_TYPE, DUT, RESULTS_DIR' \
+	  '  MAC_A_WIDTH, MAC_B_WIDTH, MAC_ACC_WIDTH, MAC_PIPELINE_CYCLES' \
 	  '  OPENROAD_CONDA_PREFIX, LIBERTY_PATHS' \
 	  '  STA_PERIOD_NS, STA_INPUT_DELAY_NS, STA_OUTPUT_DELAY_NS' \
 	  '  SIM_RANDOM_COUNT, SIM_SEED, CHECK_ENABLE'
@@ -32,18 +44,27 @@ print-config:
 	  "DESIGN_NAME=$(DESIGN_NAME)" \
 	  "DESIGN_TYPE=$(DESIGN_TYPE)" \
 	  "DUT=$(DUT)" \
+	  "EVAL_NETLIST=$(EVAL_NETLIST)" \
 	  "RESULTS_DIR=$(RESULTS_DIR)" \
+	  "MAC_A_WIDTH=$(MAC_A_WIDTH)" \
+	  "MAC_B_WIDTH=$(MAC_B_WIDTH)" \
+	  "MAC_ACC_WIDTH=$(MAC_ACC_WIDTH)" \
+	  "MAC_PIPELINE_CYCLES=$(MAC_PIPELINE_CYCLES)" \
 	  "OPENROAD_CONDA_PREFIX=$(OPENROAD_CONDA_PREFIX)" \
 	  "STA_PERIOD_NS=$(STA_PERIOD_NS)" \
 	  "STA_INPUT_DELAY_NS=$(STA_INPUT_DELAY_NS)" \
 	  "STA_OUTPUT_DELAY_NS=$(STA_OUTPUT_DELAY_NS)"
 
 dirs:
-	@mkdir -p "$(RESULTS_DIR)" "$(SIM_OUT_DIR)" "$(EVAL_OUT_DIR)"
+	@mkdir -p "$(RESULTS_DIR)" "$(SIM_OUT_DIR)" "$(EVAL_OUT_DIR)" "$(SYN_OUT_DIR)" "$(SYN_RPT_DIR)"
 
 check: dirs
 ifeq ($(CHECK_ENABLE),1)
+ifeq ($(DESIGN_TYPE),candidate)
 	@python3 "$(REPO_ROOT)/tools/check_candidate_netlist.py" "$(DUT)" --liberty "$(LIBERTY_PATHS)" | tee "$(CHECK_LOG)"
+else
+	@printf '%s\n' 'SKIP: baseline design does not run candidate legality check' | tee "$(CHECK_LOG)"
+endif
 else
 	@printf '%s\n' 'SKIP: candidate legality check disabled' | tee "$(CHECK_LOG)"
 endif
@@ -53,16 +74,50 @@ sim: check
 	  -d "$(DUT)" \
 	  -n "$(SIM_RANDOM_COUNT)" \
 	  -s "$(SIM_SEED)" \
+	  -a "$(MAC_A_WIDTH)" \
+	  -b "$(MAC_B_WIDTH)" \
+	  -w "$(MAC_ACC_WIDTH)" \
+	  -p "$(MAC_PIPELINE_CYCLES)" \
 	  -o "$(SIM_OUT_DIR)" > "$(SIM_LOG)" 2>&1
 
+synth: dirs
+ifeq ($(DESIGN_TYPE),baseline)
+	@command -v genus >/dev/null 2>&1 || { echo "ERROR: genus not found in PATH"; exit 127; }
+	@GENUS_TOP="$(TOP_MODULE)" \
+	  GENUS_RTL="$(DUT)" \
+	  GENUS_LIB="$(LIBERTY_PATHS)" \
+	  GENUS_CLK_PERIOD="$(STA_PERIOD_NS)" \
+	  GENUS_A_WIDTH="$(MAC_A_WIDTH)" \
+	  GENUS_B_WIDTH="$(MAC_B_WIDTH)" \
+	  GENUS_ACC_WIDTH="$(MAC_ACC_WIDTH)" \
+	  GENUS_PIPELINE_CYCLES="$(MAC_PIPELINE_CYCLES)" \
+	  GENUS_OUT_DIR="$(SYN_OUT_DIR)" \
+	  GENUS_RPT_DIR="$(SYN_RPT_DIR)" \
+	  genus -no_gui -files "$(REPO_ROOT)/syn/run.tcl" > "$(SYN_LOG)" 2>&1
+else
+	@printf '%s\n' 'SKIP: synthesis target only applies to baseline design type' > "$(SYN_LOG)"
+endif
+
 generate-sdc: dirs
-	@printf '%s\n' \
-	  'create_clock -name VCLK -period $(STA_PERIOD_NS)' \
-	  'set_input_delay $(STA_INPUT_DELAY_NS) -clock VCLK [get_ports {A[*] B[*] C[*]}]' \
-	  'set_output_delay $(STA_OUTPUT_DELAY_NS) -clock VCLK [get_ports {D[*]}]' > "$(GENERATED_SDC)"
+	@if [ "$(DESIGN_TYPE)" = "baseline" ] && [ "$(MAC_PIPELINE_CYCLES)" -gt 1 ]; then \
+	  printf '%s\n' \
+	    'create_clock -name VCLK -period $(STA_PERIOD_NS) [get_ports clk]' \
+	    'set_input_delay $(STA_INPUT_DELAY_NS) -clock VCLK [get_ports {A[*] B[*] C[*]}]' \
+	    'set_output_delay $(STA_OUTPUT_DELAY_NS) -clock VCLK [get_ports {D[*]}]' > "$(GENERATED_SDC)"; \
+	else \
+	  printf '%s\n' \
+	    'create_clock -name VCLK -period $(STA_PERIOD_NS)' \
+	    'set_input_delay $(STA_INPUT_DELAY_NS) -clock VCLK [get_ports {A[*] B[*] C[*]}]' \
+	    'set_output_delay $(STA_OUTPUT_DELAY_NS) -clock VCLK [get_ports {D[*]}]' > "$(GENERATED_SDC)"; \
+	fi
+
+ifeq ($(DESIGN_TYPE),baseline)
+timing: synth
+area: synth
+endif
 
 timing: sim generate-sdc
-	@NETLIST_PATH="$(DUT)" \
+	@NETLIST_PATH="$(EVAL_NETLIST)" \
 	  LIBERTY_PATHS="$(LIBERTY_PATHS)" \
 	  SDC_PATH="$(GENERATED_SDC)" \
 	  TOP_MODULE="$(TOP_MODULE)" \
@@ -73,7 +128,7 @@ timing: sim generate-sdc
 
 area: sim
 	@python3 "$(REPO_ROOT)/eval/area_report.py" \
-	  --netlist "$(DUT)" \
+	  --netlist "$(EVAL_NETLIST)" \
 	  --liberty "$(LIBERTY_PATHS)" \
 	  --top "$(TOP_MODULE)" \
 	  --out "$(AREA_JSON)"
