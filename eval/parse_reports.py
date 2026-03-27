@@ -11,13 +11,6 @@ import sys
 from pathlib import Path
 from typing import Any
 
-SCRIPT_DIR = Path(__file__).resolve().parent
-if str(SCRIPT_DIR) not in sys.path:
-    sys.path.insert(0, str(SCRIPT_DIR))
-
-from area_report import compute_area  # noqa: E402
-
-
 KEY_VALUE_RE = re.compile(r"^\s*([A-Za-z0-9_]+)\s*=\s*(.+?)\s*$")
 FLOAT_RE = re.compile(r"[-+]?\d*\.?\d+(?:[eE][-+]?\d+)?")
 
@@ -144,26 +137,6 @@ def parse_timing_summary(path: Path | None, critical_path_path: Path | None) -> 
     return result
 
 
-def compute_area_from_inputs(netlist: Path | None, liberty: str | None, top: str) -> dict[str, Any]:
-    result = {"area": None, "cell_count": 0, "area_status": "not_run"}
-    if not netlist or not liberty:
-        return result
-    liberty_paths = [Path(part) for part in liberty.split(":") if part]
-    if not netlist.exists() or not liberty_paths or any(not path.exists() for path in liberty_paths):
-        result["area_status"] = "missing_input"
-        return result
-
-    payload = compute_area(
-        netlist.read_text(encoding="utf-8", errors="ignore"),
-        [path.read_text(encoding="utf-8", errors="ignore") for path in liberty_paths],
-        top=top,
-    )
-    result["area"] = payload.get("area")
-    result["cell_count"] = payload.get("cell_count", 0)
-    result["area_status"] = payload.get("status", "unknown")
-    result["area_details"] = payload
-    return result
-
 
 def load_area_json(path: Path | None) -> dict[str, Any]:
     result = {"area": None, "cell_count": 0, "area_status": "not_run"}
@@ -198,12 +171,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--sim-log", type=Path, help="Simulation log path")
     parser.add_argument("--timing-summary", type=Path, help="Timing summary report path")
     parser.add_argument("--critical-path", type=Path, help="Critical path report path")
-    parser.add_argument("--area-json", type=Path, help="Existing area report JSON path")
-    parser.add_argument("--netlist", type=Path, help="Netlist path for area calculation")
-    parser.add_argument(
-        "--liberty",
-        help="Liberty path or colon-separated liberty file list for area calculation",
-    )
+    parser.add_argument("--area-json", required=True, type=Path, help="OpenROAD area report JSON path")
     parser.add_argument("--sim-runtime-sec", type=float)
     parser.add_argument("--eval-runtime-sec", type=float)
     parser.add_argument("--write-csv", action="store_true", help="Also emit summary.csv")
@@ -217,10 +185,7 @@ def main(argv: list[str]) -> int:
 
     sim_info = parse_sim_log(args.sim_log)
     timing_info = parse_timing_summary(args.timing_summary, args.critical_path)
-    if args.area_json:
-        area_info = load_area_json(args.area_json)
-    else:
-        area_info = compute_area_from_inputs(args.netlist, args.liberty, args.top)
+    area_info = load_area_json(args.area_json)
 
     sim_runtime = args.sim_runtime_sec
     eval_runtime = args.eval_runtime_sec

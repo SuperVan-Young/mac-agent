@@ -86,6 +86,14 @@ bash eval/run_timer.sh openroad
 这个脚本通常不需要手工调用，由 `make timing` 负责注入环境变量。
 项目不再维护单独的 `opentimer` 后端。
 
+## 底层 area 入口
+
+```bash
+bash eval/run_area.sh
+```
+
+这个脚本通常不需要手工调用，由 `make area` 负责注入环境变量。
+
 ## 输出
 
 默认输出目录：

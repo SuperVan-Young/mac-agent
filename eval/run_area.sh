@@ -4,7 +4,7 @@ set -euo pipefail
 usage() {
   cat <<'USAGE'
 Usage:
-  eval/run_area.sh openroad
+  eval/run_area.sh
 
 Low-level area wrapper intended to be called by Makefile.
 Required environment variables:
@@ -32,8 +32,7 @@ require_env() {
   [[ -n "${!name:-}" ]] || die "Missing environment variable: ${name}"
 }
 
-[[ $# -eq 1 ]] || { usage >&2; exit 2; }
-TOOL="$1"
+[[ $# -eq 0 ]] || { usage >&2; exit 2; }
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 OPENROAD_CONDA_PREFIX="${OPENROAD_CONDA_PREFIX:-/tmp/mac-agent-openroad-env}"
 
@@ -41,20 +40,13 @@ for var in NETLIST_PATH LEF_PATHS LIBERTY_PATHS TOP_MODULE AREA_LOG AREA_TOTAL_R
   require_env "$var"
 done
 
-case "${TOOL}" in
-  openroad)
-    command -v conda >/dev/null 2>&1 || die "conda not found in PATH"
-    [[ -x "${OPENROAD_CONDA_PREFIX}/bin/openroad" ]] || die "Missing ${OPENROAD_CONDA_PREFIX}/bin/openroad"
-    conda run -p "${OPENROAD_CONDA_PREFIX}" openroad \
-      -no_init \
-      -exit \
-      -log "${AREA_LOG}" \
-      "${SCRIPT_DIR}/templates/openroad_area.tcl" >/dev/null 2>&1
-    ;;
-  *)
-    die "Unsupported area tool: ${TOOL} (expected: openroad)"
-    ;;
-esac
+command -v conda >/dev/null 2>&1 || die "conda not found in PATH"
+[[ -x "${OPENROAD_CONDA_PREFIX}/bin/openroad" ]] || die "Missing ${OPENROAD_CONDA_PREFIX}/bin/openroad"
+conda run -p "${OPENROAD_CONDA_PREFIX}" openroad \
+  -no_init \
+  -exit \
+  -log "${AREA_LOG}" \
+  "${SCRIPT_DIR}/templates/openroad_area.tcl" >/dev/null 2>&1
 
 python3 "${SCRIPT_DIR}/openroad_area_report.py" \
   --openroad-log "${AREA_LOG}" \

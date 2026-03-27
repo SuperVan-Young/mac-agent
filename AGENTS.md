@@ -181,7 +181,7 @@ archive/<timestamp>_<tag>/
 - candidate legality check
 - `sim/run_rtl_sim.sh`
 - `eval/run_timer.sh`
-- `eval/area_report.py`
+- `eval/run_area.sh`
 - `eval/parse_reports.py`
 
 除非用户明确批准，否则不得切换工艺库、约束、top 接口、summary 字段。

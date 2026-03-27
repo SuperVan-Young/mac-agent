@@ -141,7 +141,7 @@ area: sim
 	  AREA_BREAKDOWN_REPORT="$(AREA_BREAKDOWN_REPORT)" \
 	  AREA_JSON="$(AREA_JSON)" \
 	  OPENROAD_CONDA_PREFIX="$(OPENROAD_CONDA_PREFIX)" \
-	  bash "$(REPO_ROOT)/eval/run_area.sh" openroad
+	  bash "$(REPO_ROOT)/eval/run_area.sh"
 
 summary: timing area
 	@python3 "$(REPO_ROOT)/eval/parse_reports.py" \
