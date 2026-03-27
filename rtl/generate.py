@@ -11,9 +11,11 @@ OUT_PATH = Path("mac16x16p32.v")
 WIDTH = 32
 AND2_CELL = "AND2x2_ASAP7_75t_R"
 XOR2_CELL = "XOR2x2_ASAP7_75t_R"
+XNOR2_CELL = "XNOR2xp5_ASAP7_75t_R"
 COMPRESS_XOR2_CELL = "XOR2xp5_ASAP7_75t_R"
 OUTPUT_XOR2_CELL = "XOR2xp5_ASAP7_75t_R"
 AO21_CELL = "AO21x1_ASAP7_75t_R"
+AOI21_CELL = "AOI21xp5_ASAP7_75t_R"
 MAJ_CELL = "MAJx2_ASAP7_75t_R"
 PREFIX_FAST_LO = 14
 PREFIX_FAST_HI = 21
@@ -47,12 +49,30 @@ class NetlistBuilder:
         self.emit_pos_inst(AND2_CELL, out, a, b)
         return out
 
+    def logic_inv(self, a: str) -> str:
+        if a == self.zero:
+            return self.zero
+        out = self.new_wire("inv")
+        self.emit(f"wire {out};")
+        self.emit_pos_inst("INVxp33_ASAP7_75t_R", out, a)
+        return out
+
     def logic_xor2(self, a: str, b: str, cell: str = XOR2_CELL) -> str:
         if a == self.zero:
             return b
         if b == self.zero:
             return a
         out = self.new_wire("xor")
+        self.emit(f"wire {out};")
+        self.emit_pos_inst(cell, out, a, b)
+        return out
+
+    def logic_xnor2(self, a: str, b: str, cell: str = XNOR2_CELL) -> str:
+        if a == self.zero:
+            return self.logic_inv(b)
+        if b == self.zero:
+            return self.logic_inv(a)
+        out = self.new_wire("xnor")
         self.emit(f"wire {out};")
         self.emit_pos_inst(cell, out, a, b)
         return out
@@ -65,6 +85,19 @@ class NetlistBuilder:
         out = self.new_wire("ao21")
         self.emit(f"wire {out};")
         self.emit_pos_inst(AO21_CELL, out, a1, a2, b)
+        return out
+
+    def logic_aoi21(self, a1: str, a2: str, b: str) -> str:
+        if a1 == self.zero or a2 == self.zero:
+            return self.logic_inv(b)
+        if b == self.zero:
+            nand = self.new_wire("nand")
+            self.emit(f"wire {nand};")
+            self.emit_pos_inst("NAND2xp5_ASAP7_75t_R", nand, a1, a2)
+            return nand
+        out = self.new_wire("aoi21")
+        self.emit(f"wire {out};")
+        self.emit_pos_inst(AOI21_CELL, out, a1, a2, b)
         return out
 
     def logic_maj3(self, a: str, b: str, c: str) -> str:
@@ -187,7 +220,7 @@ class NetlistBuilder:
             p_prev.append(p)
             g_prev.append(g)
 
-        for distance in (1, 2, 4, 8, 16):
+        for distance in (1, 2, 4, 8):
             p_next: list[str] = []
             g_next: list[str] = []
             for idx in range(WIDTH):
@@ -202,13 +235,18 @@ class NetlistBuilder:
             p_prev = p_next
             g_prev = g_next
 
-        carries = [self.zero]
-        for idx in range(1, WIDTH):
-            carries.append(g_prev[idx - 1])
+        final_carry_bar = [self.zero] * WIDTH
+        for idx in range(16, WIDTH):
+            final_carry_bar[idx] = self.logic_aoi21(p_prev[idx], g_prev[idx - 16], g_prev[idx])
 
         self.emit("")
         for idx in range(WIDTH):
-            sum_wire = self.logic_xor2(carries[idx], bit_p[idx], cell=OUTPUT_XOR2_CELL)
+            if idx == 0:
+                sum_wire = bit_p[idx]
+            elif idx <= 16:
+                sum_wire = self.logic_xor2(g_prev[idx - 1], bit_p[idx], cell=OUTPUT_XOR2_CELL)
+            else:
+                sum_wire = self.logic_xnor2(final_carry_bar[idx - 1], bit_p[idx], cell=XNOR2_CELL)
             self.emit(f"assign D[{idx}] = {sum_wire};")
 
         self.emit("endmodule")
