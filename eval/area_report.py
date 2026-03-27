@@ -21,7 +21,7 @@ INSTANCE_RE = re.compile(
     r"^\s*([\\A-Za-z_][\\\w$./\[\]:-]*)\s*(?:#\s*\((.*?)\)\s*)?([\\A-Za-z_][\\\w$./\[\]:-]*)\s*(?:\[[^\]]+\])?\s*\(",
     re.S,
 )
-AREA_RE = re.compile(r"\barea\s*:\s*([+-]?\d*\.?\d+(?:[eE][+-]?\d+)?)\s*;", re.I)
+AREA_RE = re.compile(r"\barea\s*:\s*([+-]?\d*\.?\d+(?:[eE][+-]?\d+)?)\s*;?", re.I)
 
 SKIP_PREFIXES = {
     "assign",
