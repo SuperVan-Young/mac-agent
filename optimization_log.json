@@ -161,6 +161,24 @@
         "area": 148.0,
         "cell_count": 1314
       }
+    },
+    {
+      "iteration": 8,
+      "metadata": {
+        "source": "agent",
+        "dut": "mac16x16p32.v",
+        "top_module": "mac16x16p32",
+        "comment": "Promoted worker-polarity-1 after rewriting the final prefix stage to use inverted carry generation with AOI21xp5 and XNOR2xp5-based output summation."
+      },
+      "result_summary": {
+        "correctness": "pass",
+        "timing_status": "pass",
+        "wns": 0.3043,
+        "tns": 0.0,
+        "critical_delay": 0.5957,
+        "area": 146.0,
+        "cell_count": 1298
+      }
     }
   ]
 }
