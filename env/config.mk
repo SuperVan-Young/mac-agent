@@ -27,16 +27,21 @@ SIM_SEED_LIST ?= $(SIM_SEED)
 SIM_PARALLEL_JOBS ?= 0
 CHECK_ENABLE ?= 1
 
-RESULTS_DIR ?= $(REPO_ROOT)/results/$(DESIGN_NAME)
-CHECK_LOG ?= $(RESULTS_DIR)/check.log
+# Canonical scheduler-inspectable output root.
+FLOW_RESULTS_ROOT ?= $(REPO_ROOT)/results/fixed
+RESULTS_DIR ?= $(FLOW_RESULTS_ROOT)
+LOG_DIR ?= $(RESULTS_DIR)/logs
+CHECK_LOG ?= $(LOG_DIR)/check.log
 SIM_OUT_DIR ?= $(RESULTS_DIR)/sim
-SIM_LOG ?= $(RESULTS_DIR)/sim.log
+SIM_LOG ?= $(LOG_DIR)/sim.log
 EVAL_OUT_DIR ?= $(RESULTS_DIR)/eval_sta
+SYN_OUT_DIR ?= $(RESULTS_DIR)/syn/outputs
+SYN_RPT_DIR ?= $(RESULTS_DIR)/syn/reports
 GENERATED_SDC ?= $(EVAL_OUT_DIR)/constraints.sdc
 TIMING_SUMMARY ?= $(EVAL_OUT_DIR)/timing_summary.rpt
 CRITICAL_PATH ?= $(EVAL_OUT_DIR)/critical_path.rpt
-TIMING_LOG ?= $(EVAL_OUT_DIR)/sta.log
+TIMING_LOG ?= $(LOG_DIR)/sta.log
 AREA_JSON ?= $(RESULTS_DIR)/area.json
-AREA_LOG ?= $(RESULTS_DIR)/area.log
+AREA_LOG ?= $(LOG_DIR)/area.log
 AREA_TOTAL_REPORT ?= $(EVAL_OUT_DIR)/design_area.rpt
 AREA_BREAKDOWN_REPORT ?= $(EVAL_OUT_DIR)/cell_usage.rpt

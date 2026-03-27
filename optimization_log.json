@@ -1,0 +1,18 @@
+{
+  "iteration": 0,
+  "metadata": {
+    "source": "genus_start",
+    "design_name": "candidate_mac16x16p32_genus",
+    "dut": "rtl/candidate_mac16x16p32_genus.v",
+    "top_module": "mac16x16p32"
+  },
+  "result_summary": {
+    "correctness": "unknown",
+    "timing_status": "not_run",
+    "wns": null,
+    "tns": null,
+    "critical_delay": null,
+    "area": null,
+    "cell_count": null
+  }
+}

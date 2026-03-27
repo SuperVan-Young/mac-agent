@@ -6,9 +6,7 @@ ifneq ($(strip $(CONFIG)),)
 include $(CONFIG)
 endif
 
-SYN_OUT_DIR ?= $(REPO_ROOT)/syn/outputs
-SYN_RPT_DIR ?= $(REPO_ROOT)/syn/reports
-SYN_LOG ?= $(RESULTS_DIR)/synth.log
+SYN_LOG ?= $(LOG_DIR)/synth.log
 
 ifeq ($(DESIGN_TYPE),baseline)
 EVAL_NETLIST ?= $(SYN_OUT_DIR)/baseline_mapped.v
@@ -32,11 +30,14 @@ help:
 	  '  make summary        # aggregate reports into summary.json/csv' \
 	  '' \
 	  'Useful variables (override in CONFIG or on CLI):' \
-	  '  DESIGN_NAME, DESIGN_TYPE, DUT, RESULTS_DIR' \
+	  '  DESIGN_NAME, DESIGN_TYPE, DUT, FLOW_RESULTS_ROOT, RESULTS_DIR' \
 	  '  MAC_A_WIDTH, MAC_B_WIDTH, MAC_ACC_WIDTH, MAC_PIPELINE_CYCLES' \
 	  '  OPENROAD_CONDA_PREFIX, LIBERTY_PATHS, LEF_PATHS' \
 	  '  STA_PERIOD_NS, STA_INPUT_DELAY_NS, STA_OUTPUT_DELAY_NS' \
-	  '  SIM_RANDOM_COUNT, SIM_SEED, SIM_SEED_LIST, SIM_PARALLEL_JOBS, CHECK_ENABLE'
+	  '  SIM_RANDOM_COUNT, SIM_SEED, SIM_SEED_LIST, SIM_PARALLEL_JOBS, CHECK_ENABLE' \
+	  '' \
+	  'Scheduler-inspectable outputs live under:' \
+	  '  $(FLOW_RESULTS_ROOT)'
 
 print-config:
 	@printf '%s\n' \
@@ -44,8 +45,13 @@ print-config:
 	  "DESIGN_NAME=$(DESIGN_NAME)" \
 	  "DESIGN_TYPE=$(DESIGN_TYPE)" \
 	  "DUT=$(DUT)" \
+	  "FLOW_RESULTS_ROOT=$(FLOW_RESULTS_ROOT)" \
+	  "SCHEDULER_INSPECT_PATH=$(FLOW_RESULTS_ROOT)" \
 	  "EVAL_NETLIST=$(EVAL_NETLIST)" \
 	  "RESULTS_DIR=$(RESULTS_DIR)" \
+	  "LOG_DIR=$(LOG_DIR)" \
+	  "SYN_OUT_DIR=$(SYN_OUT_DIR)" \
+	  "SYN_RPT_DIR=$(SYN_RPT_DIR)" \
 	  "MAC_A_WIDTH=$(MAC_A_WIDTH)" \
 	  "MAC_B_WIDTH=$(MAC_B_WIDTH)" \
 	  "MAC_ACC_WIDTH=$(MAC_ACC_WIDTH)" \
@@ -59,7 +65,7 @@ print-config:
 	  "STA_OUTPUT_DELAY_NS=$(STA_OUTPUT_DELAY_NS)"
 
 dirs:
-	@mkdir -p "$(RESULTS_DIR)" "$(SIM_OUT_DIR)" "$(EVAL_OUT_DIR)" "$(SYN_OUT_DIR)" "$(SYN_RPT_DIR)"
+	@mkdir -p "$(RESULTS_DIR)" "$(LOG_DIR)" "$(SIM_OUT_DIR)" "$(EVAL_OUT_DIR)" "$(SYN_OUT_DIR)" "$(SYN_RPT_DIR)"
 
 check: dirs
 	@mkdir -p "$(dir $(CHECK_LOG))"
