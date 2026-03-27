@@ -4,6 +4,7 @@
 
 - 合入/准入规则
 - 合法性审查（基于 worker 现成结果）
+- 使用 sub-agent 时的模型分配要求
 - 归档保留文件范围
 - `optimization_log.json` 要求
 - 合入（promote）或拒绝（reject）后的 worktree 清理
@@ -40,7 +41,17 @@ Scheduler 必须在 `results/fixed/` 下确认以下文件存在且可读取：
 
 任一条件不满足即拒绝（reject）。
 
-## 3. optimization_log.json 要求
+## 3. 使用 Sub-Agent 时的模型要求
+
+如果 Scheduler 需要启动 sub-agent 执行优化任务，必须满足以下要求：
+
+- 优先分配当前可用的最新版本模型
+- 思考强度必须设置为较高档位，不得使用低强度快速模式执行优化主任务
+- 若存在多个可选模型，优先选择更新且更强的模型承担实际优化工作
+
+Scheduler 不得为了节省资源而默认给优化任务分配明显过旧或低思考强度的模型。
+
+## 4. optimization_log.json 要求
 
 `optimization_log.json` 为必需修改的文件，必须是合法 UTF-8 JSON 对象。  
 为兼容历史保留与后续追加，统一采用如下结构：
@@ -84,12 +95,12 @@ Scheduler 必须在 `results/fixed/` 下确认以下文件存在且可读取：
 
 缺失或格式不合法即拒绝（reject）。
 
-## 4. 合入/拒绝后的 Worktree 清理
+## 5. 合入/拒绝后的 Worktree 清理
 
 在归档写入成功后，必须执行 worker worktree 清理：
 
 1. 合入（promote）：
-   - 完成提升提交
+   - 完成提升提交，并push到远程仓库
    - 删除对应 worker worktree
    - 按仓库策略删除 worker 分支（如允许）
 2. 拒绝（reject）：
