@@ -44,7 +44,7 @@ Candidate top logic must be structural/restricted gate-level Verilog:
 
 Candidate top module can only instantiate cells/primitives in an allowlist:
 
-- default allowlist source: repo-local ASAP7 liberty bundle when present, otherwise `tools/allowed_cells.txt`
+- default allowlist source: repo-local ASAP7 liberty bundle when present
 - can be overridden by CLI argument
 - if any instantiated cell is not in allowlist, candidate is rejected
 
@@ -53,13 +53,13 @@ Candidate top module can only instantiate cells/primitives in an allowlist:
 Checker entry:
 
 ```bash
-python3 tools/check_candidate_netlist.py <candidate.v>
+python3 check/check_candidate_netlist.py <candidate.v>
 ```
 
 Optional custom allowlist:
 
 ```bash
-python3 tools/check_candidate_netlist.py <candidate.v> --allowlist <cells.txt>
+python3 check/check_candidate_netlist.py <candidate.v> --allowlist <cells.txt>
 ```
 
 Exit code:

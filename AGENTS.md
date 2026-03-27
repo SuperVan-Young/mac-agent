@@ -132,7 +132,7 @@ archive/<timestamp>_<tag>/
 - `sim/`
 - `eval/`
 - `syn/`
-- `tools/`
+- `check/`
 - `env/`
 - `tech/`
 - `README.md`

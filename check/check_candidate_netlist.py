@@ -251,8 +251,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument(
         "--allowlist",
         type=pathlib.Path,
-        default=pathlib.Path("tools/allowed_cells.txt"),
-        help="Allowed primitive/cell list file (one cell per line)",
+        help="Optional allowed primitive/cell list file (one cell per line)",
     )
     parser.add_argument(
         "--liberty",
@@ -279,7 +278,7 @@ def main(argv: list[str]) -> int:
         )
         allowlist = tmp_allowlist
     else:
-        allowlist = args.allowlist if args.allowlist.exists() else None
+        allowlist = args.allowlist if (args.allowlist and args.allowlist.exists()) else None
     ok, errors = run_checks(args.netlist, allowlist)
     if ok:
         print(f"PASS: {args.netlist}")

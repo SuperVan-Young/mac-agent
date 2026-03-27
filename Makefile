@@ -64,7 +64,7 @@ dirs:
 check: dirs
 ifeq ($(CHECK_ENABLE),1)
 ifeq ($(DESIGN_TYPE),candidate)
-	@python3 "$(REPO_ROOT)/tools/check_candidate_netlist.py" "$(DUT)" --liberty "$(LIBERTY_PATHS)" | tee "$(CHECK_LOG)"
+	@python3 "$(REPO_ROOT)/check/check_candidate_netlist.py" "$(DUT)" --liberty "$(LIBERTY_PATHS)" | tee "$(CHECK_LOG)"
 else
 	@printf '%s\n' 'SKIP: baseline design does not run candidate legality check' | tee "$(CHECK_LOG)"
 endif
