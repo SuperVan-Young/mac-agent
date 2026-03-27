@@ -53,6 +53,24 @@
         "area": 189.0,
         "cell_count": 1293
       }
+    },
+    {
+      "iteration": 2,
+      "metadata": {
+        "source": "agent",
+        "dut": "mac16x16p32.v",
+        "top_module": "mac16x16p32",
+        "comment": "Reworked the generated candidate to use a Dadda-style reduction schedule, then downsized non-critical prefix/output cells to AND2x2/AO21x1/BUFx2 while keeping the design fully structural."
+      },
+      "result_summary": {
+        "correctness": "pass",
+        "timing_status": "pass",
+        "wns": 0.2104,
+        "tns": 0.0,
+        "critical_delay": 0.6896,
+        "area": 166.0,
+        "cell_count": 1346
+      }
     }
   ]
 }

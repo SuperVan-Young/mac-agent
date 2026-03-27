@@ -1,9 +1,5 @@
 #!/usr/bin/env python3
-"""Generate a structural 16x16+32 MAC candidate netlist.
-
-The emitted top module avoids behavioral arithmetic operators in the top-level
-body and is built from explicit bitwise logic equations plus output buffers.
-"""
+"""Generate a structural 16x16+32 MAC candidate netlist."""
 
 from __future__ import annotations
 
@@ -13,6 +9,11 @@ from pathlib import Path
 TOP = "mac16x16p32"
 OUT_PATH = Path("mac16x16p32.v")
 WIDTH = 32
+AND2_CELL = "AND2x2_ASAP7_75t_R"
+XOR2_CELL = "XOR2x2_ASAP7_75t_R"
+AO21_CELL = "AO21x1_ASAP7_75t_R"
+MAJ_CELL = "MAJx2_ASAP7_75t_R"
+OUT_BUF_CELL = "BUFx2_ASAP7_75t_R"
 
 
 class NetlistBuilder:
@@ -29,7 +30,7 @@ class NetlistBuilder:
     def emit(self, line: str = "") -> None:
         self.lines.append(line)
 
-    def emit_inst(self, cell: str, out: str, *ins: str) -> None:
+    def emit_pos_inst(self, cell: str, out: str, *ins: str) -> None:
         self.inst_counter += 1
         args = ", ".join((out, *ins))
         self.emit(f"{cell} g_{self.inst_counter}({args});")
@@ -39,17 +40,7 @@ class NetlistBuilder:
             return self.zero
         out = self.new_wire("and")
         self.emit(f"wire {out};")
-        self.emit_inst("AND2x4_ASAP7_75t_R", out, a, b)
-        return out
-
-    def logic_or(self, a: str, b: str) -> str:
-        if a == self.zero:
-            return b
-        if b == self.zero:
-            return a
-        out = self.new_wire("or")
-        self.emit(f"wire {out};")
-        self.emit_inst("OR2x4_ASAP7_75t_R", out, a, b)
+        self.emit_pos_inst(AND2_CELL, out, a, b)
         return out
 
     def logic_xor2(self, a: str, b: str) -> str:
@@ -59,7 +50,7 @@ class NetlistBuilder:
             return a
         out = self.new_wire("xor")
         self.emit(f"wire {out};")
-        self.emit_inst("XOR2x2_ASAP7_75t_R", out, a, b)
+        self.emit_pos_inst(XOR2_CELL, out, a, b)
         return out
 
     def logic_ao21(self, a1: str, a2: str, b: str) -> str:
@@ -69,7 +60,7 @@ class NetlistBuilder:
             return self.logic_and(a1, a2)
         out = self.new_wire("ao21")
         self.emit(f"wire {out};")
-        self.emit_inst("AO21x2_ASAP7_75t_R", out, a1, a2, b)
+        self.emit_pos_inst(AO21_CELL, out, a1, a2, b)
         return out
 
     def logic_maj3(self, a: str, b: str, c: str) -> str:
@@ -81,19 +72,60 @@ class NetlistBuilder:
             return self.logic_and(a, b)
         out = self.new_wire("maj")
         self.emit(f"wire {out};")
-        self.emit_inst("MAJx2_ASAP7_75t_R", out, a, b, c)
+        self.emit_pos_inst(MAJ_CELL, out, a, b, c)
         return out
 
     def logic_xor3(self, a: str, b: str, c: str) -> str:
         return self.logic_xor2(self.logic_xor2(a, b), c)
 
+    def half_adder(self, a: str, b: str) -> tuple[str, str]:
+        if a == self.zero:
+            return b, self.zero
+        if b == self.zero:
+            return a, self.zero
+        sum_wire = self.logic_xor2(a, b)
+        carry_wire = self.logic_and(a, b)
+        return sum_wire, carry_wire
+
     def full_adder(self, a: str, b: str, c: str) -> tuple[str, str]:
+        if a == self.zero:
+            return self.half_adder(b, c)
+        if b == self.zero:
+            return self.half_adder(a, c)
+        if c == self.zero:
+            return self.half_adder(a, b)
         sum_wire = self.logic_xor3(a, b, c)
         carry_wire = self.logic_maj3(a, b, c)
         return sum_wire, carry_wire
 
+    def reduce_dadda(self, cols: list[list[str]]) -> list[list[str]]:
+        max_height = max(len(col) for col in cols[:-1])
+        limits = [2]
+        while limits[-1] < max_height:
+            limits.append((limits[-1] * 3) // 2)
+        for target in reversed(limits[:-1]):
+            for idx in range(len(cols) - 1):
+                work = cols[idx][:]
+                reduced: list[str] = []
+                while len(reduced) + len(work) > target:
+                    excess = len(reduced) + len(work) - target
+                    if excess == 1:
+                        a = work.pop(0)
+                        b = work.pop(0)
+                        sum_wire, carry_wire = self.half_adder(a, b)
+                    else:
+                        a = work.pop(0)
+                        b = work.pop(0)
+                        c = work.pop(0)
+                        sum_wire, carry_wire = self.full_adder(a, b, c)
+                    reduced.append(sum_wire)
+                    cols[idx + 1].append(carry_wire)
+                reduced.extend(work)
+                cols[idx] = reduced
+        return cols
+
     def build(self) -> str:
-        cols: list[list[str]] = [[] for _ in range(WIDTH + 2)]
+        cols: list[list[str]] = [[] for _ in range(WIDTH + 1)]
 
         self.emit(f"module {TOP}(A, B, C, D);")
         self.emit("input  [15:0] A;")
@@ -101,51 +133,27 @@ class NetlistBuilder:
         self.emit("input  [31:0] C;")
         self.emit("output [31:0] D;")
         self.emit(f"wire {self.zero};")
-        self.emit_inst("XOR2x2_ASAP7_75t_R", self.zero, "A[0]", "A[0]")
+        self.emit_pos_inst(XOR2_CELL, self.zero, "A[0]", "A[0]")
         self.emit("")
 
         for i in range(16):
             for j in range(16):
                 pp = self.new_wire("pp")
                 self.emit(f"wire {pp};")
-                self.emit_inst("AND2x4_ASAP7_75t_R", pp, f"A[{i}]", f"B[{j}]")
+                self.emit_pos_inst(AND2_CELL, pp, f"A[{i}]", f"B[{j}]")
                 cols[i + j].append(pp)
 
         for bit in range(WIDTH):
             cols[bit].append(f"C[{bit}]")
 
-        stage = 0
-        while any(len(col) > 2 for col in cols[:-1]):
-            next_cols: list[list[str]] = [[] for _ in range(WIDTH + 2)]
-            for idx, bits in enumerate(cols[:-1]):
-                work = bits[:]
-                while len(work) >= 3:
-                    stage += 1
-                    a = work.pop(0)
-                    b = work.pop(0)
-                    c = work.pop(0)
-                    sum_wire, carry_wire = self.full_adder(a, b, c)
-                    next_cols[idx].append(sum_wire)
-                    next_cols[idx + 1].append(carry_wire)
-                if len(work) == 2:
-                    next_cols[idx].extend(work)
-                elif len(work) == 1:
-                    next_cols[idx].append(work[0])
-            next_cols[-1].extend(cols[-1])
-            cols = next_cols
+        cols = self.reduce_dadda(cols)
 
         self.emit("")
         row_a: list[str] = []
         row_b: list[str] = []
         for idx in range(WIDTH):
-            if len(cols[idx]) >= 1:
-                row_a.append(cols[idx][0])
-            else:
-                row_a.append(self.zero)
-            if len(cols[idx]) >= 2:
-                row_b.append(cols[idx][1])
-            else:
-                row_b.append(self.zero)
+            row_a.append(cols[idx][0] if len(cols[idx]) >= 1 else self.zero)
+            row_b.append(cols[idx][1] if len(cols[idx]) >= 2 else self.zero)
 
         bit_p: list[str] = []
         p_prev: list[str] = []
@@ -179,7 +187,7 @@ class NetlistBuilder:
         self.emit("")
         for idx in range(WIDTH):
             sum_wire = self.logic_xor2(carries[idx], bit_p[idx])
-            self.emit_inst("BUFx4_ASAP7_75t_R", f"D[{idx}]", sum_wire)
+            self.emit_pos_inst(OUT_BUF_CELL, f"D[{idx}]", sum_wire)
 
         self.emit("endmodule")
         self.emit("")
