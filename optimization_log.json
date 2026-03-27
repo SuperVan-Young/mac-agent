@@ -7,12 +7,12 @@
     "top_module": "mac16x16p32"
   },
   "result_summary": {
-    "correctness": "unknown",
-    "timing_status": "not_run",
-    "wns": null,
-    "tns": null,
-    "critical_delay": null,
-    "area": null,
-    "cell_count": null
+    "correctness": "pass",
+    "timing_status": "fail",
+    "wns": -381.7295,
+    "tns": -9982.5127,
+    "critical_delay": 382.6295,
+    "area": 153.0,
+    "cell_count": 1716
   }
 }
