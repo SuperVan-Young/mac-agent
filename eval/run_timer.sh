@@ -10,7 +10,7 @@ set -euo pipefail
 #     --sdc eval/templates/minimal.sdc
 #
 # Notes:
-# - Tool auto-detection: OpenROAD first, then OpenTimer (ot-shell).
+# - Tool auto-detection: OpenSTA (`sta`) first, then OpenROAD, then OpenTimer (ot-shell).
 # - `--dry-run` validates arguments and prints the resolved command only.
 
 usage() {
@@ -112,13 +112,24 @@ mkdir -p "$OUT_DIR"
 
 resolve_tool() {
   local req="$1"
+  local have_sta=1
   local have_openroad=1
+  if command -v sta >/dev/null 2>&1; then
+    have_sta=0
+  elif command -v conda >/dev/null 2>&1 && [[ -x "${CONDA_PREFIX_PATH}/bin/sta" ]]; then
+    have_sta=0
+  fi
   if command -v openroad >/dev/null 2>&1; then
     have_openroad=0
   elif command -v conda >/dev/null 2>&1 && [[ -x "${CONDA_PREFIX_PATH}/bin/openroad" ]]; then
     have_openroad=0
   fi
 
+  if [[ "$req" == "sta" ]]; then
+    [[ "$have_sta" -eq 0 ]] || die "Requested sta, but command not found in PATH or ${CONDA_PREFIX_PATH}/bin/sta"
+    echo "sta"
+    return
+  fi
   if [[ "$req" == "openroad" ]]; then
     [[ "$have_openroad" -eq 0 ]] || die "Requested openroad, but command not found in PATH or ${CONDA_PREFIX_PATH}/bin/openroad"
     echo "openroad"
@@ -129,6 +140,10 @@ resolve_tool() {
     echo "opentimer"
     return
   fi
+  if [[ "$have_sta" -eq 0 ]]; then
+    echo "sta"
+    return
+  fi
   if [[ "$have_openroad" -eq 0 ]]; then
     echo "openroad"
     return
@@ -137,13 +152,17 @@ resolve_tool() {
     echo "opentimer"
     return
   fi
-  die "No STA tool found (expected 'openroad' or 'ot-shell' in PATH)"
+  die "No STA tool found (expected 'sta', 'openroad', or 'ot-shell' in PATH)"
 }
 
 TOOL_RESOLVED=""
 
 if [[ "$DRY_RUN" -eq 1 && "$TOOL" == "auto" ]]; then
-  if command -v openroad >/dev/null 2>&1; then
+  if command -v sta >/dev/null 2>&1; then
+    TOOL_RESOLVED="sta"
+  elif command -v conda >/dev/null 2>&1 && [[ -x "${CONDA_PREFIX_PATH}/bin/sta" ]]; then
+    TOOL_RESOLVED="sta"
+  elif command -v openroad >/dev/null 2>&1; then
     TOOL_RESOLVED="openroad"
   elif command -v conda >/dev/null 2>&1 && [[ -x "${CONDA_PREFIX_PATH}/bin/openroad" ]]; then
     TOOL_RESOLVED="openroad"
@@ -166,7 +185,15 @@ export TIMING_SUMMARY_REPORT="${OUT_DIR_PATH}/timing_summary.rpt"
 export CRITICAL_PATH_REPORT="${OUT_DIR_PATH}/critical_path.rpt"
 STA_LOG="${OUT_DIR_PATH}/sta.log"
 
-if [[ "$TOOL_RESOLVED" == "openroad" ]]; then
+if [[ "$TOOL_RESOLVED" == "sta" ]]; then
+  if command -v sta >/dev/null 2>&1; then
+    STA_CMD=(sta "${SCRIPT_DIR}/templates/openroad_sta.tcl")
+  else
+    command -v conda >/dev/null 2>&1 || die "conda is required for --conda-prefix fallback"
+    [[ -x "${CONDA_PREFIX_PATH}/bin/sta" ]] || die "OpenSTA not found at ${CONDA_PREFIX_PATH}/bin/sta"
+    STA_CMD=(conda run -p "${CONDA_PREFIX_PATH}" sta "${SCRIPT_DIR}/templates/openroad_sta.tcl")
+  fi
+elif [[ "$TOOL_RESOLVED" == "openroad" ]]; then
   if command -v openroad >/dev/null 2>&1; then
     STA_CMD=(openroad -no_init -exit "${SCRIPT_DIR}/templates/openroad_sta.tcl")
   else

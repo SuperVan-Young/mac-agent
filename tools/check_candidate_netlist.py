@@ -26,6 +26,14 @@ DEFAULT_ALLOWED_PRIMITIVES = {
     "buf",
 }
 
+DEFAULT_REPO_LIBERTIES = (
+    "tech/asap7/lib/NLDM/asap7sc7p5t_AO_RVT_TT_nldm_211120.lib",
+    "tech/asap7/lib/NLDM/asap7sc7p5t_INVBUF_RVT_TT_nldm_220122.lib",
+    "tech/asap7/lib/NLDM/asap7sc7p5t_OA_RVT_TT_nldm_211120.lib",
+    "tech/asap7/lib/NLDM/asap7sc7p5t_SIMPLE_RVT_TT_nldm_211120.lib",
+    "tech/asap7/lib/NLDM/asap7sc7p5t_SEQ_RVT_TT_nldm_220123.lib",
+)
+
 FORBIDDEN_OPERATOR_PATTERNS = (
     re.compile(r"(?<!\w)\*(?!\w)"),
     re.compile(r"(?<!\w)\+(?!\w)"),
@@ -47,6 +55,7 @@ INSTANTIATION_RE = re.compile(
 ATTRIBUTE_RE = re.compile(r"\(\*.*?\*\)", re.S)
 COMMENT_BLOCK_RE = re.compile(r"/\*.*?\*/", re.S)
 COMMENT_LINE_RE = re.compile(r"//.*?$", re.M)
+LIB_CELL_RE = re.compile(r"\bcell\s*\(\s*([^)]+?)\s*\)\s*\{", re.I)
 
 
 @dataclass
@@ -72,6 +81,20 @@ def load_allowlist(path: pathlib.Path | None) -> set[str]:
         if not line or line.startswith("#"):
             continue
         allowed.add(line.split()[0])
+    return allowed
+
+
+def load_allowlist_from_liberties(liberty_arg: str | None) -> set[str]:
+    allowed = set(DEFAULT_ALLOWED_PRIMITIVES)
+    if not liberty_arg:
+        return allowed
+    for part in liberty_arg.split(":"):
+        path = pathlib.Path(part)
+        if not path.exists():
+            continue
+        raw = path.read_text(encoding="utf-8", errors="ignore")
+        for match in LIB_CELL_RE.finditer(raw):
+            allowed.add(match.group(1).strip().strip('"'))
     return allowed
 
 
@@ -231,12 +254,32 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         default=pathlib.Path("tools/allowed_cells.txt"),
         help="Allowed primitive/cell list file (one cell per line)",
     )
+    parser.add_argument(
+        "--liberty",
+        help="Colon-separated liberty file list used to derive an allowed cell set",
+    )
     return parser.parse_args(argv)
+
+
+def resolve_default_liberty_bundle() -> str | None:
+    existing = [str(pathlib.Path(path)) for path in DEFAULT_REPO_LIBERTIES if pathlib.Path(path).exists()]
+    if not existing:
+        return None
+    return ":".join(existing)
 
 
 def main(argv: list[str]) -> int:
     args = parse_args(argv)
-    allowlist = args.allowlist if args.allowlist.exists() else None
+    liberty_arg = args.liberty or resolve_default_liberty_bundle()
+    if liberty_arg:
+        derived_allowlist = load_allowlist_from_liberties(liberty_arg)
+        tmp_allowlist = pathlib.Path("/tmp/candidate_allowlist.txt")
+        tmp_allowlist.write_text(
+            "\n".join(sorted(derived_allowlist)) + "\n", encoding="utf-8"
+        )
+        allowlist = tmp_allowlist
+    else:
+        allowlist = args.allowlist if args.allowlist.exists() else None
     ok, errors = run_checks(args.netlist, allowlist)
     if ok:
         print(f"PASS: {args.netlist}")

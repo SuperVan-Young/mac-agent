@@ -7,6 +7,7 @@ OUT_DIR="${SIM_DIR}/out"
 DUT_PATH="${ROOT_DIR}/rtl/baseline.v"
 RANDOM_COUNT=5000
 SEED=1
+EXTRA_SRCS=()
 
 usage() {
     cat <<EOF
@@ -17,15 +18,17 @@ Options:
   -n  number of random vectors (default: 5000)
   -s  RNG seed (default: 1)
   -o  output directory (default: sim/out)
+  -l  extra Verilog source file, may be repeated
 EOF
 }
 
-while getopts ":d:n:s:o:h" opt; do
+while getopts ":d:n:s:o:l:h" opt; do
     case "${opt}" in
         d) DUT_PATH="${OPTARG}" ;;
         n) RANDOM_COUNT="${OPTARG}" ;;
         s) SEED="${OPTARG}" ;;
         o) OUT_DIR="${OPTARG}" ;;
+        l) EXTRA_SRCS+=("${OPTARG}") ;;
         h)
             usage
             exit 0
@@ -67,6 +70,12 @@ mkdir -p "${OUT_DIR}"
 VEC_FILE="${OUT_DIR}/vectors.txt"
 SIMV="${OUT_DIR}/simv.out"
 
+if rg -q "_ASAP7_" "${DUT_PATH}"; then
+    while IFS= read -r stdcell_src; do
+        EXTRA_SRCS+=("${stdcell_src}")
+    done < <(find "${ROOT_DIR}/tech/asap7/verilog/stdcell" -maxdepth 1 -type f -name '*.v' | sort)
+fi
+
 python3 "${SIM_DIR}/vectors.py" \
     --out "${VEC_FILE}" \
     --random-count "${RANDOM_COUNT}" \
@@ -76,6 +85,7 @@ echo "Compiling DUT: ${DUT_PATH}"
 iverilog -g2012 \
     -s tb_mac \
     -o "${SIMV}" \
+    "${EXTRA_SRCS[@]}" \
     "${DUT_PATH}" \
     "${SIM_DIR}/tb_mac.sv"
 
