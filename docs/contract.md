@@ -62,7 +62,7 @@ Two design categories are supported:
 
 2. Candidate netlist
    - Source file pattern: `rtl/candidate_<tag>.v`
-   - Purpose: Agent-produced structural Verilog that is evaluated directly without DC remapping.
+   - Purpose: Agent-produced structural Verilog that is evaluated directly without Genus remapping.
 
 ## Candidate Rules
 
@@ -71,7 +71,7 @@ Candidate designs must satisfy all of the following rules:
 - The top-level module name must be `mac16x16p32`.
 - The top-level ports and widths must exactly match the canonical interface.
 - The design must be structural Verilog or restricted gate-level Verilog.
-- The design must not rely on DC to infer arithmetic structure.
+- The design must not rely on Genus to infer arithmetic structure.
 - The design must not contain behavioral multiplication or addition in the DUT body.
 - The design must only instantiate allowed primitives or cells present in the target liberty allowlist.
 
@@ -85,7 +85,7 @@ Allowed non-datapath wrappers are limited to trivial net assignments needed for 
 
 ## Baseline Outputs
 
-The baseline DC flow must generate:
+The baseline Genus flow must generate:
 
 - `syn/outputs/baseline_mapped.v`
 - `syn/reports/baseline_timing.rpt`
@@ -187,5 +187,5 @@ Any implementation claiming compliance with this contract must pass the followin
 1. The top-level interface exactly matches `mac16x16p32(A, B, C, D)`.
 2. The unsigned reference model is used consistently in simulation.
 3. Baseline output paths match the fixed `syn/outputs` and `syn/reports` naming rules.
-4. Candidate designs can enter simulation and evaluation without any DC remapping step.
+4. Candidate designs can enter simulation and evaluation without any Genus remapping step.
 5. Result summaries expose the full required schema.

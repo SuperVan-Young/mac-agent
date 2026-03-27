@@ -4,7 +4,7 @@ This document defines the submission and admission checks for candidate structur
 
 ## Scope
 
-Candidate files are direct-evaluation DUT netlists and must not require DC remapping before simulation or STA/area evaluation.
+Candidate files are direct-evaluation DUT netlists and must not require Genus remapping before simulation or STA/area evaluation.
 
 ## Required File/Form
 
@@ -44,7 +44,7 @@ Candidate top logic must be structural/restricted gate-level Verilog:
 
 Candidate top module can only instantiate cells/primitives in an allowlist:
 
-- default allowlist file: `tools/allowed_cells.txt`
+- default allowlist source: repo-local ASAP7 liberty bundle when present, otherwise `tools/allowed_cells.txt`
 - can be overridden by CLI argument
 - if any instantiated cell is not in allowlist, candidate is rejected
 
