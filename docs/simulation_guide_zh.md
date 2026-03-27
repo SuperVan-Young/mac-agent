@@ -39,6 +39,8 @@ bash sim/run_rtl_sim.sh -d rtl/candidate_xxx.v
 - `-d`：DUT 路径
 - `-n`：随机向量数量，默认 `5000`
 - `-s`：随机种子
+- `-S`：逗号分隔的 seed 列表，每个 seed 启动一个独立子仿真
+- `-j`：最大并行仿真进程数
 - `-o`：输出目录，默认 `sim/out`
 - `-a`：A 输入位宽，默认 `16`
 - `-b`：B 输入位宽，默认 `16`
@@ -50,6 +52,14 @@ bash sim/run_rtl_sim.sh -d rtl/candidate_xxx.v
 ```bash
 bash sim/run_rtl_sim.sh -d rtl/candidate_seed.v -n 2000 -s 7
 ```
+
+并行多 seed 示例：
+
+```bash
+bash sim/run_rtl_sim.sh -d rtl/candidate_seed.v -n 5000 -S 1,2,3,4 -j 4
+```
+
+脚本会为每个 seed 生成单独目录 `seed_<n>/`，只有所有 seed 都通过时，整体仿真才返回通过。
 
 baseline 可配置位宽/流水示例：
 
