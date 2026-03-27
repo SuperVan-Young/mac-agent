@@ -197,6 +197,24 @@
         "area": 145.0,
         "cell_count": 1299
       }
+    },
+    {
+      "iteration": 10,
+      "metadata": {
+        "source": "agent",
+        "dut": "mac16x16p32.v",
+        "top_module": "mac16x16p32",
+        "comment": "Promoted worker-final-polarity after expanding polarity-aware handling across the survivor-to-prefix boundary and extending mixed-polarity compression into the high final-Dadda region."
+      },
+      "result_summary": {
+        "correctness": "pass",
+        "timing_status": "pass",
+        "wns": 0.3043,
+        "tns": 0.0,
+        "critical_delay": 0.5957,
+        "area": 143.0,
+        "cell_count": 1267
+      }
     }
   ]
 }
