@@ -21,8 +21,8 @@ MAJ_CELL = "MAJx2_ASAP7_75t_R"
 NOR2_CELL = "NOR2xp33_ASAP7_75t_R"
 PREFIX_FAST_LO = 14
 PREFIX_FAST_HI = 21
-MIXED_HIGH_LO = 22
-MIXED_HIGH_HI = 29
+MIXED_HIGH_LO = 18
+MIXED_HIGH_HI = 31
 BitRef = tuple[str, int]
 PhasedBitRef = tuple[str, int, bool]
 
