@@ -55,13 +55,10 @@ results/fixed/
 - `results/fixed/eval_sta/critical_path.rpt`
 - `results/fixed/eval_sta/design_area.rpt`
 - `results/fixed/eval_sta/cell_usage.rpt`
-- `results/fixed/eval_sta/instance_area.csv`
-- `results/fixed/eval_sta/cell_area_breakdown.rpt`
-- `results/fixed/eval_sta/module_area_breakdown.rpt`
-- `results/fixed/eval_sta/instance_group_area_breakdown.rpt`
 - `results/fixed/area.json`
 
 ## 说明
 
 - baseline 会先通过 Genus 生成综合网表，再走后续统一评测流程
 - `CHECK_ENABLE=0` 是因为 baseline 不走 candidate legality check
+- 如果 AI 需要做更细的 area 定性分析，可执行 `make area-debug`，说明见 `docs/area_debug_guide_zh.md`

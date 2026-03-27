@@ -68,18 +68,28 @@ class ModuleInfo:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Parse OpenROAD area outputs.")
+    parser.add_argument("--detail", action="store_true", help="Enable detailed area breakdown parsing")
     parser.add_argument("--openroad-log", required=True, type=Path)
-    parser.add_argument("--netlist", required=True, type=Path)
-    parser.add_argument("--liberty-paths", required=True, help="Colon-separated liberty list")
-    parser.add_argument("--top-module", required=True)
+    parser.add_argument("--netlist", type=Path)
+    parser.add_argument("--liberty-paths", help="Colon-separated liberty list")
+    parser.add_argument("--top-module")
     parser.add_argument("--design-area-rpt", required=True, type=Path)
     parser.add_argument("--cell-usage-rpt", required=True, type=Path)
-    parser.add_argument("--instance-area-csv", required=True, type=Path)
-    parser.add_argument("--cell-area-rpt", required=True, type=Path)
-    parser.add_argument("--module-area-rpt", required=True, type=Path)
-    parser.add_argument("--group-area-rpt", required=True, type=Path)
+    parser.add_argument("--instance-area-csv", type=Path)
+    parser.add_argument("--cell-area-rpt", type=Path)
+    parser.add_argument("--module-area-rpt", type=Path)
+    parser.add_argument("--group-area-rpt", type=Path)
     parser.add_argument("--out", required=True, type=Path)
-    return parser.parse_args()
+    args = parser.parse_args()
+    if args.detail:
+        missing = [
+            name
+            for name in ("netlist", "liberty_paths", "top_module", "instance_area_csv", "cell_area_rpt", "module_area_rpt", "group_area_rpt")
+            if getattr(args, name) in (None, "")
+        ]
+        if missing:
+            parser.error("--detail requires " + ", ".join(f"--{name.replace('_', '-')}" for name in missing))
+    return args
 
 
 def strip_comments(text: str) -> str:
@@ -395,14 +405,73 @@ def _format_value(value: Any) -> str:
     return str(value)
 
 
-def main() -> int:
-    args = parse_args()
+def parse_legacy_result(
+    area_line: str | None,
+    area_match: re.Match[str] | None,
+    usage_lines: list[str],
+) -> dict[str, Any]:
     result: dict[str, Any] = {
         "status": "missing_input",
         "source": "openroad",
         "area": None,
         "area_unit": None,
         "utilization_percent": None,
+        "cell_count": 0,
+        "cell_breakdown": {},
+    }
+
+    usage_breakdown: dict[str, dict[str, int]] = {}
+    cell_count = 0
+    for usage_line in usage_lines:
+        match = USAGE_RE.match(usage_line)
+        if not match:
+            continue
+        count = int(match.group(2))
+        usage_breakdown[match.group(1).strip()] = {"count": count}
+        cell_count += count
+
+    if area_line and area_match:
+        result["area"] = float(area_match.group(1))
+        result["area_unit"] = area_match.group(2)
+        result["utilization_percent"] = float(area_match.group(3))
+        result["status"] = "ok"
+    else:
+        result["error"] = "parse_error:design_area"
+
+    result["cell_breakdown"] = usage_breakdown
+    result["cell_count"] = cell_count
+    return result
+
+
+def main() -> int:
+    args = parse_args()
+    area_line, area_match, usage_lines = parse_openroad_log(args.openroad_log)
+
+    args.design_area_rpt.parent.mkdir(parents=True, exist_ok=True)
+    args.cell_usage_rpt.parent.mkdir(parents=True, exist_ok=True)
+
+    if area_line and area_match:
+        args.design_area_rpt.write_text(area_line + "\n", encoding="utf-8")
+    else:
+        args.design_area_rpt.write_text("", encoding="utf-8")
+
+    if usage_lines:
+        args.cell_usage_rpt.write_text("\n".join(usage_lines) + "\n", encoding="utf-8")
+    else:
+        args.cell_usage_rpt.write_text("", encoding="utf-8")
+
+    if not args.detail:
+        result = parse_legacy_result(area_line, area_match, usage_lines)
+        args.out.parent.mkdir(parents=True, exist_ok=True)
+        args.out.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        return 0
+
+    result: dict[str, Any] = {
+        "status": "missing_input",
+        "source": "openroad",
+        "area": float(area_match.group(1)) if area_match else None,
+        "area_unit": area_match.group(2) if area_match else None,
+        "utilization_percent": float(area_match.group(3)) if area_match else None,
         "cell_count": 0,
         "cell_breakdown": {},
         "top_cells": [],
@@ -415,25 +484,6 @@ def main() -> int:
         "instance_area_source": str(args.instance_area_csv),
     }
 
-    area_line, area_match, usage_lines = parse_openroad_log(args.openroad_log)
-
-    args.design_area_rpt.parent.mkdir(parents=True, exist_ok=True)
-    args.cell_usage_rpt.parent.mkdir(parents=True, exist_ok=True)
-
-    if area_line and area_match:
-        args.design_area_rpt.write_text(area_line + "\n", encoding="utf-8")
-        result["area"] = float(area_match.group(1))
-        result["area_unit"] = area_match.group(2)
-        result["utilization_percent"] = float(area_match.group(3))
-    else:
-        args.design_area_rpt.write_text("", encoding="utf-8")
-        result["error"] = "parse_error:design_area"
-
-    if usage_lines:
-        args.cell_usage_rpt.write_text("\n".join(usage_lines) + "\n", encoding="utf-8")
-    else:
-        args.cell_usage_rpt.write_text("", encoding="utf-8")
-
     usage_breakdown: dict[str, dict[str, int]] = {}
     for usage_line in usage_lines:
         match = USAGE_RE.match(usage_line)
@@ -441,7 +491,7 @@ def main() -> int:
             continue
         usage_breakdown[match.group(1).strip()] = {"count": int(match.group(2))}
 
-    liberty_areas = load_liberty_areas(args.liberty_paths)
+    liberty_areas = load_liberty_areas(args.liberty_paths or "")
     instances = load_instance_records(args.instance_area_csv)
     grand_total = float(result["area"] or 0.0)
 
@@ -449,9 +499,9 @@ def main() -> int:
         instances, liberty_areas, grand_total
     )
     instance_groups = aggregate_instance_groups(instances, liberty_areas, grand_total)
-    modules = parse_modules(args.netlist) if args.netlist.exists() else {}
+    modules = parse_modules(args.netlist) if args.netlist and args.netlist.exists() else {}
     module_entries, unknown_types = compute_module_hierarchy(
-        modules, liberty_areas, args.top_module, grand_total
+        modules, liberty_areas, args.top_module or "", grand_total
     )
 
     result["cell_breakdown"] = cell_breakdown or usage_breakdown

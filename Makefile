@@ -14,7 +14,7 @@ else
 EVAL_NETLIST ?= $(DUT)
 endif
 
-.PHONY: help print-config dirs check sim synth generate-sdc timing area summary all clean
+.PHONY: help print-config dirs check sim synth generate-sdc timing area area-debug summary all clean
 
 help:
 	@printf '%s\n' \
@@ -27,6 +27,7 @@ help:
 	  '  make synth          # baseline synthesis (Genus)' \
 	  '  make timing         # timing analysis via OpenROAD(OpenSTA)' \
 	  '  make area           # OpenROAD area analysis with LEF + liberty' \
+	  '  make area-debug     # detailed area contribution analysis' \
 	  '  make summary        # aggregate reports into summary.json/csv' \
 	  '' \
 	  'Useful variables (override in CONFIG or on CLI):' \
@@ -128,6 +129,7 @@ generate-sdc: dirs
 ifeq ($(DESIGN_TYPE),baseline)
 timing: synth
 area: synth
+area-debug: synth
 endif
 
 timing: sim generate-sdc
@@ -150,6 +152,21 @@ area: sim
 	  AREA_LOG="$(AREA_LOG)" \
 	  AREA_TOTAL_REPORT="$(AREA_TOTAL_REPORT)" \
 	  AREA_BREAKDOWN_REPORT="$(AREA_BREAKDOWN_REPORT)" \
+	  AREA_DETAIL_ENABLE=0 \
+	  AREA_JSON="$(AREA_JSON)" \
+	  OPENROAD_CONDA_PREFIX="$(OPENROAD_CONDA_PREFIX)" \
+	  bash "$(REPO_ROOT)/eval/run_area.sh"
+
+area-debug: sim
+	@mkdir -p "$(EVAL_OUT_DIR)" "$(dir $(AREA_LOG))" "$(dir $(AREA_JSON))"
+	@NETLIST_PATH="$(EVAL_NETLIST)" \
+	  LEF_PATHS="$(LEF_PATHS)" \
+	  LIBERTY_PATHS="$(LIBERTY_PATHS)" \
+	  TOP_MODULE="$(TOP_MODULE)" \
+	  AREA_LOG="$(AREA_LOG)" \
+	  AREA_TOTAL_REPORT="$(AREA_TOTAL_REPORT)" \
+	  AREA_BREAKDOWN_REPORT="$(AREA_BREAKDOWN_REPORT)" \
+	  AREA_DETAIL_ENABLE=1 \
 	  AREA_INSTANCE_CSV="$(AREA_INSTANCE_CSV)" \
 	  AREA_CELL_DETAIL_REPORT="$(AREA_CELL_DETAIL_REPORT)" \
 	  AREA_MODULE_DETAIL_REPORT="$(AREA_MODULE_DETAIL_REPORT)" \
