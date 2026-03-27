@@ -3,7 +3,7 @@
 # Optional env vars:
 #   GENUS_TOP             (default: mac16x16p32)
 #   GENUS_RTL             (default: <repo>/rtl/baseline.v)
-#   GENUS_LIB             (required in real Genus runs; .lib path)
+#   GENUS_LIB             (default: repo-local ASAP7 TT/RVT liberty bundle, colon-separated)
 #   GENUS_CLK_PERIOD      (default: 1.0, ns)
 #   GENUS_OUT_DIR         (default: syn/outputs)
 #   GENUS_RPT_DIR         (default: syn/reports)
@@ -18,18 +18,28 @@ proc env_or_default {name default_value} {
 
 set script_dir [file dirname [file normalize [info script]]]
 set repo_root [file normalize [file join $script_dir ..]]
+set DEFAULT_LIB_FILES [join [list \
+    [file join $repo_root tech asap7 lib NLDM asap7sc7p5t_AO_RVT_TT_nldm_211120.lib] \
+    [file join $repo_root tech asap7 lib NLDM asap7sc7p5t_INVBUF_RVT_TT_nldm_220122.lib] \
+    [file join $repo_root tech asap7 lib NLDM asap7sc7p5t_OA_RVT_TT_nldm_211120.lib] \
+    [file join $repo_root tech asap7 lib NLDM asap7sc7p5t_SIMPLE_RVT_TT_nldm_211120.lib] \
+    [file join $repo_root tech asap7 lib NLDM asap7sc7p5t_SEQ_RVT_TT_nldm_220123.lib] \
+] ":"]
 
 set TOP_NAME      [env_or_default GENUS_TOP mac16x16p32]
 set RTL_FILE      [env_or_default GENUS_RTL [file join $repo_root rtl baseline.v]]
-set LIB_FILE      [env_or_default GENUS_LIB ""]
+set LIB_FILES_RAW [env_or_default GENUS_LIB $DEFAULT_LIB_FILES]
+set LIB_FILES     [split $LIB_FILES_RAW ":"]
 set CLK_PERIOD_NS [env_or_default GENUS_CLK_PERIOD 1.0]
 set OUT_DIR       [env_or_default GENUS_OUT_DIR [file join $script_dir outputs]]
 set RPT_DIR       [env_or_default GENUS_RPT_DIR [file join $script_dir reports]]
 set DRY_RUN_FLAG  [env_or_default GENUS_DRY_RUN 0]
 set DRY_RUN       [expr {$DRY_RUN_FLAG in {1 true TRUE yes YES}}]
 
-if {$LIB_FILE eq ""} {
-    puts "WARN: GENUS_LIB is not set; set it before real Genus synthesis."
+foreach lib_file $LIB_FILES {
+    if {![file exists $lib_file]} {
+        puts "WARN: Genus liberty not found at $lib_file"
+    }
 }
 
 file mkdir $OUT_DIR
@@ -39,13 +49,13 @@ if {$DRY_RUN} {
     puts "GENUS_DRY_RUN=1: parsed Genus baseline script without executing tool commands."
     puts "Resolved TOP: $TOP_NAME"
     puts "Resolved RTL: $RTL_FILE"
-    puts "Resolved LIB: $LIB_FILE"
+    puts "Resolved LIBS: $LIB_FILES_RAW"
     puts "Resolved OUT_DIR: $OUT_DIR"
     puts "Resolved RPT_DIR: $RPT_DIR"
     exit 0
 }
 
-set_db library [list $LIB_FILE]
+set_db library $LIB_FILES
 
 read_hdl $RTL_FILE
 elaborate $TOP_NAME

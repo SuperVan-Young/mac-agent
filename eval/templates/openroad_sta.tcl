@@ -1,6 +1,6 @@
 # OpenROAD/OpenSTA minimal STA driver.
 # Required env vars:
-#   NETLIST_PATH LIBERTY_PATH SDC_PATH OUT_DIR_PATH
+#   NETLIST_PATH LIBERTY_PATHS SDC_PATH OUT_DIR_PATH
 #   TIMING_SUMMARY_REPORT CRITICAL_PATH_REPORT TOP_MODULE
 
 proc require_env {name} {
@@ -12,7 +12,7 @@ proc require_env {name} {
 
 foreach var {
   NETLIST_PATH
-  LIBERTY_PATH
+  LIBERTY_PATHS
   SDC_PATH
   OUT_DIR_PATH
   TIMING_SUMMARY_REPORT
@@ -22,7 +22,9 @@ foreach var {
   require_env $var
 }
 
-read_liberty $::env(LIBERTY_PATH)
+foreach lib_path [split $::env(LIBERTY_PATHS) ":"] {
+  read_liberty $lib_path
+}
 read_verilog $::env(NETLIST_PATH)
 link_design $::env(TOP_MODULE)
 read_sdc $::env(SDC_PATH)

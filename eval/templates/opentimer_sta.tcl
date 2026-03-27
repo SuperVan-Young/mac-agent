@@ -1,6 +1,6 @@
 # OpenTimer minimal STA driver.
 # Required env vars:
-#   NETLIST_PATH LIBERTY_PATH SDC_PATH
+#   NETLIST_PATH LIBERTY_PATHS SDC_PATH
 #   TIMING_SUMMARY_REPORT CRITICAL_PATH_REPORT
 
 proc require_env {name} {
@@ -12,7 +12,7 @@ proc require_env {name} {
 
 foreach var {
   NETLIST_PATH
-  LIBERTY_PATH
+  LIBERTY_PATHS
   SDC_PATH
   TIMING_SUMMARY_REPORT
   CRITICAL_PATH_REPORT
@@ -22,7 +22,9 @@ foreach var {
 
 # Command names can differ by OpenTimer version. Keep this script minimal
 # and aligned with common ot-shell commands.
-read_celllib $::env(LIBERTY_PATH)
+foreach lib_path [split $::env(LIBERTY_PATHS) ":"] {
+  read_celllib $lib_path
+}
 read_verilog $::env(NETLIST_PATH)
 read_sdc $::env(SDC_PATH)
 update_timing

@@ -7,7 +7,6 @@ set -euo pipefail
 # Typical usage:
 #   ./eval/run_timer.sh \
 #     --netlist syn/outputs/baseline_mapped.v \
-#     --liberty tech/slow.lib \
 #     --sdc eval/templates/minimal.sdc
 #
 # Notes:
@@ -17,14 +16,15 @@ set -euo pipefail
 usage() {
   cat <<'USAGE'
 Usage:
-  eval/run_timer.sh --netlist <file.v> --liberty <file.lib> --sdc <file.sdc> [options]
+  eval/run_timer.sh --netlist <file.v> --sdc <file.sdc> [options]
 
 Required:
   --netlist <path>    Gate-level netlist to analyze
-  --liberty <path>    Liberty timing library
   --sdc <path>        SDC constraint file
 
 Optional:
+  --liberty <path>    Liberty timing library path, or a colon-separated list
+                      of liberty files. Default: repo-local ASAP7 TT/RVT bundle.
   --out-dir <path>    Output report directory
   --top <name>        Top module name (default: mac16x16p32)
   --tool <name>       auto | openroad | opentimer (default: auto)
@@ -54,6 +54,15 @@ TOOL="auto"
 CONDA_PREFIX_PATH="${OPENROAD_CONDA_PREFIX:-/tmp/mac-agent-openroad-env}"
 TIMEOUT_SEC="90"
 DRY_RUN=0
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+DEFAULT_LIBERTIES=(
+  "${REPO_ROOT}/tech/asap7/lib/NLDM/asap7sc7p5t_AO_RVT_TT_nldm_211120.lib"
+  "${REPO_ROOT}/tech/asap7/lib/NLDM/asap7sc7p5t_INVBUF_RVT_TT_nldm_220122.lib"
+  "${REPO_ROOT}/tech/asap7/lib/NLDM/asap7sc7p5t_OA_RVT_TT_nldm_211120.lib"
+  "${REPO_ROOT}/tech/asap7/lib/NLDM/asap7sc7p5t_SIMPLE_RVT_TT_nldm_211120.lib"
+  "${REPO_ROOT}/tech/asap7/lib/NLDM/asap7sc7p5t_SEQ_RVT_TT_nldm_220123.lib"
+)
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -72,11 +81,18 @@ while [[ $# -gt 0 ]]; do
 done
 
 [[ -n "$NETLIST" ]] || die "--netlist is required"
-[[ -n "$LIBERTY" ]] || die "--liberty is required"
+if [[ -z "$LIBERTY" ]]; then
+  LIBERTY="$(IFS=:; echo "${DEFAULT_LIBERTIES[*]}")"
+fi
 [[ -n "$SDC" ]] || die "--sdc is required"
 [[ -f "$NETLIST" ]] || die "Netlist not found: $NETLIST"
-[[ -f "$LIBERTY" ]] || die "Liberty not found: $LIBERTY"
 [[ -f "$SDC" ]] || die "SDC not found: $SDC"
+
+IFS=':' read -r -a LIBERTY_FILES <<< "$LIBERTY"
+[[ "${#LIBERTY_FILES[@]}" -gt 0 ]] || die "No liberty files resolved"
+for liberty_file in "${LIBERTY_FILES[@]}"; do
+  [[ -f "$liberty_file" ]] || die "Liberty not found: $liberty_file"
+done
 
 case "$TOOL" in
   auto|openroad|opentimer) ;;
@@ -124,7 +140,6 @@ resolve_tool() {
   die "No STA tool found (expected 'openroad' or 'ot-shell' in PATH)"
 }
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TOOL_RESOLVED=""
 
 if [[ "$DRY_RUN" -eq 1 && "$TOOL" == "auto" ]]; then
@@ -142,7 +157,8 @@ else
 fi
 
 export NETLIST_PATH="$(realpath "$NETLIST")"
-export LIBERTY_PATH="$(realpath "$LIBERTY")"
+export LIBERTY_PATHS="$(printf '%s:' "${LIBERTY_FILES[@]}")"
+export LIBERTY_PATHS="${LIBERTY_PATHS%:}"
 export SDC_PATH="$(realpath "$SDC")"
 export OUT_DIR_PATH="$(realpath "$OUT_DIR")"
 export TOP_MODULE
@@ -195,7 +211,7 @@ run_with_timeout() {
   echo "Tool: ${TOOL_RESOLVED}"
   echo "Top: ${TOP_MODULE}"
   echo "Netlist: ${NETLIST_PATH}"
-  echo "Liberty: ${LIBERTY_PATH}"
+  echo "Liberties: ${LIBERTY_PATHS}"
   echo "SDC: ${SDC_PATH}"
   echo "Out: ${OUT_DIR_PATH}"
   run_with_timeout

@@ -39,6 +39,10 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+DEFAULT_ASAP7_LIB_DIR="${REPO_ROOT}/tech/asap7/lib/NLDM"
+
 if ! command -v conda >/dev/null 2>&1; then
   echo "ERROR: conda not found in PATH" >&2
   exit 1
@@ -63,4 +67,11 @@ if conda list -p "${CONDA_PREFIX_PATH}" | rg '^openroad\s' >/dev/null 2>&1; then
   conda run -p "${CONDA_PREFIX_PATH}" openroad -version
 else
   echo "OpenROAD is not installed in ${CONDA_PREFIX_PATH}"
+fi
+
+if [[ -d "${DEFAULT_ASAP7_LIB_DIR}" ]]; then
+  echo "Default repo-local ASAP7 liberty bundle:"
+  find "${DEFAULT_ASAP7_LIB_DIR}" -maxdepth 1 -type f | sort
+else
+  echo "WARN: repo-local ASAP7 liberty bundle not found at ${DEFAULT_ASAP7_LIB_DIR}"
 fi
