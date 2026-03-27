@@ -15,6 +15,7 @@ COMPRESS_XOR2_CELL = "XOR2xp5_ASAP7_75t_R"
 OUTPUT_XOR2_CELL = "XOR2xp5_ASAP7_75t_R"
 AO21_CELL = "AO21x1_ASAP7_75t_R"
 MAJ_CELL = "MAJx2_ASAP7_75t_R"
+BitRef = tuple[str, int]
 
 
 class NetlistBuilder:
@@ -83,35 +84,44 @@ class NetlistBuilder:
             cell=COMPRESS_XOR2_CELL,
         )
 
-    def half_adder(self, a: str, b: str) -> tuple[str, str]:
-        if a == self.zero:
-            return b, self.zero
-        if b == self.zero:
-            return a, self.zero
-        sum_wire = self.logic_xor2(a, b, cell=COMPRESS_XOR2_CELL)
-        carry_wire = self.logic_and(a, b)
-        return sum_wire, carry_wire
+    def half_adder(self, a: BitRef, b: BitRef) -> tuple[BitRef, BitRef]:
+        a_sig, a_rank = a
+        b_sig, b_rank = b
+        if a_sig == self.zero:
+            return b, (self.zero, -1)
+        if b_sig == self.zero:
+            return a, (self.zero, -1)
+        base_rank = max(a_rank, b_rank)
+        sum_wire = self.logic_xor2(a_sig, b_sig, cell=COMPRESS_XOR2_CELL)
+        carry_wire = self.logic_and(a_sig, b_sig)
+        return (sum_wire, base_rank + 2), (carry_wire, base_rank + 1)
 
-    def full_adder(self, a: str, b: str, c: str) -> tuple[str, str]:
-        if a == self.zero:
+    def full_adder(self, a: BitRef, b: BitRef, c: BitRef) -> tuple[BitRef, BitRef]:
+        a_sig, a_rank = a
+        b_sig, b_rank = b
+        c_sig, c_rank = c
+        if a_sig == self.zero:
             return self.half_adder(b, c)
-        if b == self.zero:
+        if b_sig == self.zero:
             return self.half_adder(a, c)
-        if c == self.zero:
+        if c_sig == self.zero:
             return self.half_adder(a, b)
-        sum_wire = self.logic_xor3(a, b, c)
-        carry_wire = self.logic_maj3(a, b, c)
-        return sum_wire, carry_wire
+        base_rank = max(a_rank, b_rank, c_rank)
+        sum_wire = self.logic_xor3(a_sig, b_sig, c_sig)
+        carry_wire = self.logic_maj3(a_sig, b_sig, c_sig)
+        return (sum_wire, base_rank + 2), (carry_wire, base_rank + 1)
 
-    def reduce_dadda(self, cols: list[list[str]]) -> list[list[str]]:
+    def reduce_dadda(self, cols: list[list[BitRef]]) -> list[list[BitRef]]:
         max_height = max(len(col) for col in cols[:-1])
         limits = [2]
         while limits[-1] < max_height:
             limits.append((limits[-1] * 3) // 2)
         for target in reversed(limits[:-1]):
             for idx in range(len(cols) - 1):
-                work = cols[idx][:]
-                reduced: list[str] = []
+                # Compress earlier-arriving bits first so late signals avoid
+                # extra sum-stage depth when the column is over target height.
+                work = sorted(cols[idx], key=lambda item: item[1])
+                reduced: list[BitRef] = []
                 while len(reduced) + len(work) > target:
                     excess = len(reduced) + len(work) - target
                     if excess == 1:
@@ -126,11 +136,11 @@ class NetlistBuilder:
                     reduced.append(sum_wire)
                     cols[idx + 1].append(carry_wire)
                 reduced.extend(work)
-                cols[idx] = reduced
+                cols[idx] = sorted(reduced, key=lambda item: item[1])
         return cols
 
     def build(self) -> str:
-        cols: list[list[str]] = [[] for _ in range(WIDTH + 1)]
+        cols: list[list[BitRef]] = [[] for _ in range(WIDTH + 1)]
 
         self.emit(f"module {TOP}(A, B, C, D);")
         self.emit("input  [15:0] A;")
@@ -146,10 +156,10 @@ class NetlistBuilder:
                 pp = self.new_wire("pp")
                 self.emit(f"wire {pp};")
                 self.emit_pos_inst(AND2_CELL, pp, f"A[{i}]", f"B[{j}]")
-                cols[i + j].append(pp)
+                cols[i + j].append((pp, 0))
 
         for bit in range(WIDTH):
-            cols[bit].append(f"C[{bit}]")
+            cols[bit].append((f"C[{bit}]", 0))
 
         cols = self.reduce_dadda(cols)
 
@@ -157,8 +167,8 @@ class NetlistBuilder:
         row_a: list[str] = []
         row_b: list[str] = []
         for idx in range(WIDTH):
-            row_a.append(cols[idx][0] if len(cols[idx]) >= 1 else self.zero)
-            row_b.append(cols[idx][1] if len(cols[idx]) >= 2 else self.zero)
+            row_a.append(cols[idx][0][0] if len(cols[idx]) >= 1 else self.zero)
+            row_b.append(cols[idx][1][0] if len(cols[idx]) >= 2 else self.zero)
 
         bit_p: list[str] = []
         p_prev: list[str] = []
