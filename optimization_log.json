@@ -215,6 +215,24 @@
         "area": 143.0,
         "cell_count": 1267
       }
+    },
+    {
+      "iteration": 11,
+      "metadata": {
+        "source": "agent",
+        "dut": "mac16x16p32.v",
+        "top_module": "mac16x16p32",
+        "comment": "Promoted autonomous worker round auto05 after expanding the high mixed-polarity compression window to columns 18..31 without degrading timing."
+      },
+      "result_summary": {
+        "correctness": "pass",
+        "timing_status": "pass",
+        "wns": 0.3043,
+        "tns": 0.0,
+        "critical_delay": 0.5957,
+        "area": 142.0,
+        "cell_count": 1257
+      }
     }
   ]
 }
