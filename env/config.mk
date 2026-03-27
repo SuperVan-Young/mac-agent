@@ -15,6 +15,7 @@ MAC_PIPELINE_CYCLES ?= 1
 
 OPENROAD_CONDA_PREFIX ?= /tmp/mac-agent-openroad-env
 LIBERTY_PATHS ?= $(REPO_ROOT)/tech/asap7/lib/NLDM/asap7sc7p5t_AO_RVT_TT_nldm_211120.lib:$(REPO_ROOT)/tech/asap7/lib/NLDM/asap7sc7p5t_INVBUF_RVT_TT_nldm_220122.lib:$(REPO_ROOT)/tech/asap7/lib/NLDM/asap7sc7p5t_OA_RVT_TT_nldm_211120.lib:$(REPO_ROOT)/tech/asap7/lib/NLDM/asap7sc7p5t_SIMPLE_RVT_TT_nldm_211120.lib:$(REPO_ROOT)/tech/asap7/lib/NLDM/asap7sc7p5t_SEQ_RVT_TT_nldm_220123.lib
+LEF_PATHS ?= $(REPO_ROOT)/tech/asap7/lef/asap7_tech_1x_201209.lef:$(REPO_ROOT)/tech/asap7/lef/asap7sc7p5t_28_L_1x_220121a.lef:$(REPO_ROOT)/tech/asap7/lef/asap7sc7p5t_28_R_1x_220121a.lef:$(REPO_ROOT)/tech/asap7/lef/asap7sc7p5t_28_SL_1x_220121a.lef:$(REPO_ROOT)/tech/asap7/lef/asap7sc7p5t_DFFHQNH2V2X.lef:$(REPO_ROOT)/tech/asap7/lef/asap7sc7p5t_DFFHQNV2X.lef:$(REPO_ROOT)/tech/asap7/lef/asap7sc7p5t_DFFHQNV4X.lef
 
 STA_PERIOD_NS ?= 1.000
 STA_INPUT_DELAY_NS ?= 0.100
@@ -36,3 +37,6 @@ TIMING_SUMMARY ?= $(EVAL_OUT_DIR)/timing_summary.rpt
 CRITICAL_PATH ?= $(EVAL_OUT_DIR)/critical_path.rpt
 TIMING_LOG ?= $(EVAL_OUT_DIR)/sta.log
 AREA_JSON ?= $(RESULTS_DIR)/area.json
+AREA_LOG ?= $(RESULTS_DIR)/area.log
+AREA_TOTAL_REPORT ?= $(EVAL_OUT_DIR)/design_area.rpt
+AREA_BREAKDOWN_REPORT ?= $(EVAL_OUT_DIR)/cell_usage.rpt

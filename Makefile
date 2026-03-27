@@ -27,14 +27,14 @@ help:
 	  '  make check          # candidate legality check' \
 	  '  make sim            # RTL/gate simulation' \
 	  '  make synth          # baseline synthesis (Genus)' \
-	  '  make timing         # timing analysis via OpenROAD package' \
-	  '  make area           # liberty-based area analysis' \
+	  '  make timing         # timing analysis via OpenROAD(OpenSTA)' \
+	  '  make area           # OpenROAD area analysis with LEF + liberty' \
 	  '  make summary        # aggregate reports into summary.json/csv' \
 	  '' \
 	  'Useful variables (override in CONFIG or on CLI):' \
 	  '  DESIGN_NAME, DESIGN_TYPE, DUT, RESULTS_DIR' \
 	  '  MAC_A_WIDTH, MAC_B_WIDTH, MAC_ACC_WIDTH, MAC_PIPELINE_CYCLES' \
-	  '  OPENROAD_CONDA_PREFIX, LIBERTY_PATHS' \
+	  '  OPENROAD_CONDA_PREFIX, LIBERTY_PATHS, LEF_PATHS' \
 	  '  STA_PERIOD_NS, STA_INPUT_DELAY_NS, STA_OUTPUT_DELAY_NS' \
 	  '  SIM_RANDOM_COUNT, SIM_SEED, SIM_SEED_LIST, SIM_PARALLEL_JOBS, CHECK_ENABLE'
 
@@ -51,6 +51,7 @@ print-config:
 	  "MAC_ACC_WIDTH=$(MAC_ACC_WIDTH)" \
 	  "MAC_PIPELINE_CYCLES=$(MAC_PIPELINE_CYCLES)" \
 	  "OPENROAD_CONDA_PREFIX=$(OPENROAD_CONDA_PREFIX)" \
+	  "LEF_PATHS=$(LEF_PATHS)" \
 	  "SIM_SEED_LIST=$(SIM_SEED_LIST)" \
 	  "SIM_PARALLEL_JOBS=$(SIM_PARALLEL_JOBS)" \
 	  "STA_PERIOD_NS=$(STA_PERIOD_NS)" \
@@ -131,11 +132,16 @@ timing: sim generate-sdc
 	  bash "$(REPO_ROOT)/eval/run_timer.sh" openroad > "$(TIMING_LOG)" 2>&1
 
 area: sim
-	@python3 "$(REPO_ROOT)/eval/area_report.py" \
-	  --netlist "$(EVAL_NETLIST)" \
-	  --liberty "$(LIBERTY_PATHS)" \
-	  --top "$(TOP_MODULE)" \
-	  --out "$(AREA_JSON)"
+	@NETLIST_PATH="$(EVAL_NETLIST)" \
+	  LEF_PATHS="$(LEF_PATHS)" \
+	  LIBERTY_PATHS="$(LIBERTY_PATHS)" \
+	  TOP_MODULE="$(TOP_MODULE)" \
+	  AREA_LOG="$(AREA_LOG)" \
+	  AREA_TOTAL_REPORT="$(AREA_TOTAL_REPORT)" \
+	  AREA_BREAKDOWN_REPORT="$(AREA_BREAKDOWN_REPORT)" \
+	  AREA_JSON="$(AREA_JSON)" \
+	  OPENROAD_CONDA_PREFIX="$(OPENROAD_CONDA_PREFIX)" \
+	  bash "$(REPO_ROOT)/eval/run_area.sh" openroad
 
 summary: timing area
 	@python3 "$(REPO_ROOT)/eval/parse_reports.py" \

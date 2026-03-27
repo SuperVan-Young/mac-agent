@@ -50,6 +50,13 @@ make all CONFIG=archive/<tag>/config.mk
 - `tech/asap7/lib/NLDM/asap7sc7p5t_SIMPLE_RVT_TT_nldm_211120.lib`
 - `tech/asap7/lib/NLDM/asap7sc7p5t_SEQ_RVT_TT_nldm_220123.lib`
 
+OpenROAD 面积分析还会读取 repo-local ASAP7 LEF：
+
+- `tech/asap7/lef/asap7_tech_1x_201209.lef`
+- `tech/asap7/lef/asap7sc7p5t_28_L_1x_220121a.lef`
+- `tech/asap7/lef/asap7sc7p5t_28_R_1x_220121a.lef`
+- `tech/asap7/lef/asap7sc7p5t_28_SL_1x_220121a.lef`
+
 ## Make 入口
 
 完整评估：
@@ -93,14 +100,22 @@ results/<netlist_basename>/eval_sta/
 - `critical_path.rpt`
 - `sta.log`
 
-## 面积统计
+## 面积统计（OpenROAD）
 
-```bash
-python3 eval/area_report.py \
-  --netlist syn/outputs/baseline_mapped.v \
-  --liberty tech/asap7/lib/NLDM/asap7sc7p5t_AO_RVT_TT_nldm_211120.lib:tech/asap7/lib/NLDM/asap7sc7p5t_INVBUF_RVT_TT_nldm_220122.lib:tech/asap7/lib/NLDM/asap7sc7p5t_OA_RVT_TT_nldm_211120.lib:tech/asap7/lib/NLDM/asap7sc7p5t_SIMPLE_RVT_TT_nldm_211120.lib:tech/asap7/lib/NLDM/asap7sc7p5t_SEQ_RVT_TT_nldm_220123.lib \
-  --out results/baseline/area.json
-```
+`make area` 会调用 OpenROAD，输出：
+
+- `results/<design>/eval_sta/design_area.rpt`
+- `results/<design>/eval_sta/cell_usage.rpt`
+- `results/<design>/area.json`
+
+`area.json` 中包含：
+
+- `area`（OpenROAD `report_design_area` 总面积）
+- `cell_breakdown`（OpenROAD `report_cell_usage` 分类统计）
+- `cell_count`（分类统计求和）
+
+说明：这条口径与“纯 liberty 单元面积求和”不同。
+OpenROAD 结果依赖 LEF/库映射与工具统计方式，数值可用于同口径横向比较，但不要和旧的 liberty-sum 结果直接混比。
 
 ## 统一汇总
 

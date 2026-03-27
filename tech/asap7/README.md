@@ -31,6 +31,16 @@ For current eval/synthesis needs, we vendor one RVT TT NLDM liberty bundle:
 These files are used together as the default repo-local ASAP7 bundle for
 Genus synthesis and OpenROAD timing evaluation.
 
+For OpenROAD area analysis, we also vendor a minimal LEF set:
+
+- `lef/asap7_tech_1x_201209.lef`
+- `lef/asap7sc7p5t_28_L_1x_220121a.lef`
+- `lef/asap7sc7p5t_28_R_1x_220121a.lef`
+- `lef/asap7sc7p5t_28_SL_1x_220121a.lef`
+- `lef/asap7sc7p5t_DFFHQNH2V2X.lef`
+- `lef/asap7sc7p5t_DFFHQNV2X.lef`
+- `lef/asap7sc7p5t_DFFHQNV4X.lef`
+
 The bundle is sourced from ASAP7 NLDM libraries:
 
 - `asap7sc7p5t_AO_RVT_TT_nldm_211120.lib.gz`
