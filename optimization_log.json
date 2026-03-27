@@ -125,6 +125,24 @@
         "area": 149.0,
         "cell_count": 1314
       }
+    },
+    {
+      "iteration": 6,
+      "metadata": {
+        "source": "agent",
+        "dut": "mac16x16p32.v",
+        "top_module": "mac16x16p32",
+        "comment": "Promoted worker-dadda-connect after reordering Dadda compressor scheduling by estimated arrival time so later-arriving signals pass through fewer FA sum chains."
+      },
+      "result_summary": {
+        "correctness": "pass",
+        "timing_status": "pass",
+        "wns": 0.2979,
+        "tns": 0.0,
+        "critical_delay": 0.6021,
+        "area": 149.0,
+        "cell_count": 1314
+      }
     }
   ]
 }
