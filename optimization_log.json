@@ -251,6 +251,24 @@
         "area": 147.0,
         "cell_count": 1257
       }
+    },
+    {
+      "iteration": 13,
+      "metadata": {
+        "source": "agent",
+        "dut": "mac16x16p32.v",
+        "top_module": "mac16x16p32",
+        "comment": "Promoted worker-balance-2 after refining the D18 compression fast window asymmetrically, keeping only the second XOR stage of the critical compression chain on the faster cell."
+      },
+      "result_summary": {
+        "correctness": "pass",
+        "timing_status": "pass",
+        "wns": 0.3336,
+        "tns": 0.0,
+        "critical_delay": 0.5664,
+        "area": 144.0,
+        "cell_count": 1257
+      }
     }
   ]
 }
