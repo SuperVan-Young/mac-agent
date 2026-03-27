@@ -233,6 +233,24 @@
         "area": 142.0,
         "cell_count": 1257
       }
+    },
+    {
+      "iteration": 12,
+      "metadata": {
+        "source": "agent",
+        "dut": "mac16x16p32.v",
+        "top_module": "mac16x16p32",
+        "comment": "Promoted worker-midwin-2 under timing-priority criteria after speeding up the compression-tree XOR chain that feeds the D18 critical window."
+      },
+      "result_summary": {
+        "correctness": "pass",
+        "timing_status": "pass",
+        "wns": 0.3315,
+        "tns": 0.0,
+        "critical_delay": 0.5685,
+        "area": 147.0,
+        "cell_count": 1257
+      }
     }
   ]
 }
