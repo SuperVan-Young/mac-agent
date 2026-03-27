@@ -62,6 +62,7 @@ dirs:
 	@mkdir -p "$(RESULTS_DIR)" "$(SIM_OUT_DIR)" "$(EVAL_OUT_DIR)" "$(SYN_OUT_DIR)" "$(SYN_RPT_DIR)"
 
 check: dirs
+	@mkdir -p "$(dir $(CHECK_LOG))"
 ifeq ($(CHECK_ENABLE),1)
 ifeq ($(DESIGN_TYPE),candidate)
 	@python3 "$(REPO_ROOT)/check/check_candidate_netlist.py" "$(DUT)" --liberty "$(LIBERTY_PATHS)" | tee "$(CHECK_LOG)"
@@ -73,6 +74,7 @@ else
 endif
 
 sim: check
+	@mkdir -p "$(SIM_OUT_DIR)" "$(dir $(SIM_LOG))"
 	@bash "$(REPO_ROOT)/sim/run_rtl_sim.sh" \
 	  -d "$(DUT)" \
 	  -n "$(SIM_RANDOM_COUNT)" \
@@ -86,6 +88,7 @@ sim: check
 	  -o "$(SIM_OUT_DIR)" > "$(SIM_LOG)" 2>&1
 
 synth: dirs
+	@mkdir -p "$(dir $(SYN_LOG))" "$(SYN_OUT_DIR)" "$(SYN_RPT_DIR)"
 ifeq ($(DESIGN_TYPE),baseline)
 	@command -v genus >/dev/null 2>&1 || { echo "ERROR: genus not found in PATH"; exit 127; }
 	@GENUS_TOP="$(TOP_MODULE)" \
@@ -122,6 +125,7 @@ area: synth
 endif
 
 timing: sim generate-sdc
+	@mkdir -p "$(EVAL_OUT_DIR)" "$(dir $(TIMING_LOG))"
 	@NETLIST_PATH="$(EVAL_NETLIST)" \
 	  LIBERTY_PATHS="$(LIBERTY_PATHS)" \
 	  SDC_PATH="$(GENERATED_SDC)" \
@@ -132,6 +136,7 @@ timing: sim generate-sdc
 	  bash "$(REPO_ROOT)/eval/run_timer.sh" openroad > "$(TIMING_LOG)" 2>&1
 
 area: sim
+	@mkdir -p "$(EVAL_OUT_DIR)" "$(dir $(AREA_LOG))" "$(dir $(AREA_JSON))"
 	@NETLIST_PATH="$(EVAL_NETLIST)" \
 	  LEF_PATHS="$(LEF_PATHS)" \
 	  LIBERTY_PATHS="$(LIBERTY_PATHS)" \
