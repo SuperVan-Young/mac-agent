@@ -15,6 +15,8 @@ COMPRESS_XOR2_CELL = "XOR2xp5_ASAP7_75t_R"
 OUTPUT_XOR2_CELL = "XOR2xp5_ASAP7_75t_R"
 AO21_CELL = "AO21x1_ASAP7_75t_R"
 MAJ_CELL = "MAJx2_ASAP7_75t_R"
+PREFIX_FAST_LO = 14
+PREFIX_FAST_HI = 21
 BitRef = tuple[str, int]
 
 
@@ -83,6 +85,11 @@ class NetlistBuilder:
             c,
             cell=COMPRESS_XOR2_CELL,
         )
+
+    def prefix_xor_cell(self, bit_idx: int) -> str:
+        if PREFIX_FAST_LO <= bit_idx <= PREFIX_FAST_HI:
+            return XOR2_CELL
+        return COMPRESS_XOR2_CELL
 
     def half_adder(self, a: BitRef, b: BitRef) -> tuple[BitRef, BitRef]:
         a_sig, a_rank = a
@@ -174,7 +181,7 @@ class NetlistBuilder:
         p_prev: list[str] = []
         g_prev: list[str] = []
         for idx in range(WIDTH):
-            p = self.logic_xor2(row_a[idx], row_b[idx])
+            p = self.logic_xor2(row_a[idx], row_b[idx], cell=self.prefix_xor_cell(idx))
             g = self.logic_and(row_a[idx], row_b[idx])
             bit_p.append(p)
             p_prev.append(p)
