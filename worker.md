@@ -55,6 +55,7 @@ timeout 10m make clean && timeout 10m make all DESIGN_TYPE=candidate DUT=$(pwd)/
 - 改动必须局部、可解释、可回退
 - 不允许同时引入多个优化想法
 - 不允许为了通过验证去改框架
+- 不允许读入已有网表结构做增量修改，必须从零开始构建网表
 
 ## 6. Worker 侧验收标准
 
