@@ -176,6 +176,11 @@ class NetlistBuilder:
             return COMPRESS_FAST_XOR2_CELL
         return COMPRESS_XOR2_CELL
 
+    def compress_first_xor_cell(self, bit_idx: int) -> str:
+        # Keep the first XOR in the FA on the smaller cell and only spend
+        # faster XORs on the second-stage sum combine within the D18 window.
+        return COMPRESS_XOR2_CELL
+
     def half_adder(
         self, a: PhasedBitRef, b: PhasedBitRef, bit_idx: int
     ) -> tuple[PhasedBitRef, PhasedBitRef]:
@@ -203,7 +208,7 @@ class NetlistBuilder:
         if c_sig == self.zero:
             return self.half_adder(a, b, bit_idx)
         base_rank = max(a_rank, b_rank, c_rank)
-        xor_ab = self.logic_xor2(a_sig, b_sig, cell=self.compress_xor_cell(bit_idx))
+        xor_ab = self.logic_xor2(a_sig, b_sig, cell=self.compress_first_xor_cell(bit_idx))
         sum_wire = self.logic_xor2(xor_ab, c_sig, cell=self.compress_xor_cell(bit_idx))
         carry_wire = self.logic_maj3(a_sig, b_sig, c_sig)
         return (sum_wire, base_rank + 2, False), (carry_wire, base_rank + 1, False)
