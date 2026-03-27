@@ -71,6 +71,24 @@
         "area": 166.0,
         "cell_count": 1346
       }
+    },
+    {
+      "iteration": 3,
+      "metadata": {
+        "source": "agent",
+        "dut": "mac16x16p32.v",
+        "top_module": "mac16x16p32",
+        "comment": "Promoted worker-round-1 after removing the explicit output buffer stage and driving D directly from the final sum network."
+      },
+      "result_summary": {
+        "correctness": "pass",
+        "timing_status": "pass",
+        "wns": 0.2271,
+        "tns": 0.0,
+        "critical_delay": 0.6729,
+        "area": 163.0,
+        "cell_count": 1314
+      }
     }
   ]
 }
