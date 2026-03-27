@@ -1,14 +1,13 @@
-# Minimal DC flow for baseline MAC only.
+# Minimal Cadence Genus flow for baseline MAC only.
 #
 # Optional env vars:
-#   DC_TOP             (default: mac16x16p32)
-#   DC_RTL             (default: <repo>/rtl/baseline.v)
-#   DC_TARGET_LIB      (required in real DC runs)
-#   DC_LINK_LIB        (default: "* $DC_TARGET_LIB")
-#   DC_SYNTHETIC_LIB   (default: dw_foundation.sldb)
-#   DC_CLK_PERIOD      (default: 1.0, ns)
-#   DC_OUT_DIR         (default: syn/outputs)
-#   DC_RPT_DIR         (default: syn/reports)
+#   GENUS_TOP             (default: mac16x16p32)
+#   GENUS_RTL             (default: <repo>/rtl/baseline.v)
+#   GENUS_LIB             (required in real Genus runs; .lib path)
+#   GENUS_CLK_PERIOD      (default: 1.0, ns)
+#   GENUS_OUT_DIR         (default: syn/outputs)
+#   GENUS_RPT_DIR         (default: syn/reports)
+#   GENUS_DRY_RUN         (default: 0; if 1, parse-only sanity mode)
 
 proc env_or_default {name default_value} {
     if {[info exists ::env($name)] && $::env($name) ne ""} {
@@ -20,39 +19,47 @@ proc env_or_default {name default_value} {
 set script_dir [file dirname [file normalize [info script]]]
 set repo_root [file normalize [file join $script_dir ..]]
 
-set TOP_NAME      [env_or_default DC_TOP mac16x16p32]
-set RTL_FILE      [env_or_default DC_RTL [file join $repo_root rtl baseline.v]]
-set TARGET_LIB    [env_or_default DC_TARGET_LIB ""]
-set SYNTH_LIB     [env_or_default DC_SYNTHETIC_LIB dw_foundation.sldb]
-set CLK_PERIOD_NS [env_or_default DC_CLK_PERIOD 1.0]
-set OUT_DIR       [env_or_default DC_OUT_DIR [file join $script_dir outputs]]
-set RPT_DIR       [env_or_default DC_RPT_DIR [file join $script_dir reports]]
+set TOP_NAME      [env_or_default GENUS_TOP mac16x16p32]
+set RTL_FILE      [env_or_default GENUS_RTL [file join $repo_root rtl baseline.v]]
+set LIB_FILE      [env_or_default GENUS_LIB ""]
+set CLK_PERIOD_NS [env_or_default GENUS_CLK_PERIOD 1.0]
+set OUT_DIR       [env_or_default GENUS_OUT_DIR [file join $script_dir outputs]]
+set RPT_DIR       [env_or_default GENUS_RPT_DIR [file join $script_dir reports]]
+set DRY_RUN_FLAG  [env_or_default GENUS_DRY_RUN 0]
+set DRY_RUN       [expr {$DRY_RUN_FLAG in {1 true TRUE yes YES}}]
 
-if {$TARGET_LIB eq ""} {
-    puts "WARN: DC_TARGET_LIB is not set; set it before real DC synthesis."
+if {$LIB_FILE eq ""} {
+    puts "WARN: GENUS_LIB is not set; set it before real Genus synthesis."
 }
-
-set LINK_LIB [env_or_default DC_LINK_LIB "* $TARGET_LIB"]
 
 file mkdir $OUT_DIR
 file mkdir $RPT_DIR
 
-set_app_var target_library    [list $TARGET_LIB]
-set_app_var link_library      $LINK_LIB
-set_app_var synthetic_library [list $SYNTH_LIB]
+if {$DRY_RUN} {
+    puts "GENUS_DRY_RUN=1: parsed Genus baseline script without executing tool commands."
+    puts "Resolved TOP: $TOP_NAME"
+    puts "Resolved RTL: $RTL_FILE"
+    puts "Resolved LIB: $LIB_FILE"
+    puts "Resolved OUT_DIR: $OUT_DIR"
+    puts "Resolved RPT_DIR: $RPT_DIR"
+    exit 0
+}
 
-analyze -format verilog $RTL_FILE
+set_db library [list $LIB_FILE]
+
+read_hdl $RTL_FILE
 elaborate $TOP_NAME
 current_design $TOP_NAME
-link
 
 # Combinational baseline: constrain input->output max delay as a simple target.
 set_max_delay $CLK_PERIOD_NS -from [all_inputs] -to [all_outputs]
 
-compile_ultra
+syn_generic
+syn_map
+syn_opt
 
-write -format verilog -hierarchy -output [file join $OUT_DIR baseline_mapped.v]
+write_hdl -mapped > [file join $OUT_DIR baseline_mapped.v]
 report_timing -max_paths 10 > [file join $RPT_DIR baseline_timing.rpt]
 report_area > [file join $RPT_DIR baseline_area.rpt]
 
-puts "Baseline DC flow complete."
+puts "Baseline Genus flow complete."
