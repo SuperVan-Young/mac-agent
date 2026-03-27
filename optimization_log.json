@@ -107,6 +107,24 @@
         "area": 150.0,
         "cell_count": 1314
       }
+    },
+    {
+      "iteration": 5,
+      "metadata": {
+        "source": "agent",
+        "dut": "mac16x16p32.v",
+        "top_module": "mac16x16p32",
+        "comment": "Promoted worker-round-4 after downsizing the final output-sum XOR stage from XOR2x2 to XOR2xp5 without changing the compression tree or prefix network."
+      },
+      "result_summary": {
+        "correctness": "pass",
+        "timing_status": "pass",
+        "wns": 0.2037,
+        "tns": 0.0,
+        "critical_delay": 0.6963,
+        "area": 149.0,
+        "cell_count": 1314
+      }
     }
   ]
 }
