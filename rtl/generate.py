@@ -20,6 +20,7 @@ MAJ_CELL = "MAJx2_ASAP7_75t_R"
 PREFIX_FAST_LO = 14
 PREFIX_FAST_HI = 21
 BitRef = tuple[str, int]
+PhasedBitRef = tuple[str, int, bool]
 
 
 class NetlistBuilder:
@@ -112,6 +113,30 @@ class NetlistBuilder:
         self.emit_pos_inst(MAJ_CELL, out, a, b, c)
         return out
 
+    def mixed_half_adder(self, a: str, b: str) -> tuple[str, str]:
+        carry_bar = self.new_wire("ha_cbar")
+        sum_bar = self.new_wire("ha_sbar")
+        self.emit(f"wire {carry_bar};")
+        self.emit(f"wire {sum_bar};")
+        # HAxp5 emits complemented carry and complemented parity.
+        self.emit_pos_inst("HAxp5_ASAP7_75t_R", carry_bar, sum_bar, a, b)
+        return sum_bar, carry_bar
+
+    def mixed_full_adder(self, a: str, b: str, c: str) -> tuple[str, str]:
+        carry_bar = self.new_wire("fa_cbar")
+        sum_bar = self.new_wire("fa_sbar")
+        self.emit(f"wire {carry_bar};")
+        self.emit(f"wire {sum_bar};")
+        # FAx1 emits complemented carry and complemented parity.
+        self.emit_pos_inst("FAx1_ASAP7_75t_R", carry_bar, sum_bar, a, b, c)
+        return sum_bar, carry_bar
+
+    def materialize_positive(self, bit: PhasedBitRef) -> PhasedBitRef:
+        sig, rank, inverted = bit
+        if not inverted or sig == self.zero:
+            return bit
+        return (self.logic_inv(sig), rank + 1, False)
+
     def logic_xor3(self, a: str, b: str, c: str) -> str:
         return self.logic_xor2(
             self.logic_xor2(a, b, cell=COMPRESS_XOR2_CELL),
@@ -124,22 +149,22 @@ class NetlistBuilder:
             return XOR2_CELL
         return COMPRESS_XOR2_CELL
 
-    def half_adder(self, a: BitRef, b: BitRef) -> tuple[BitRef, BitRef]:
-        a_sig, a_rank = a
-        b_sig, b_rank = b
+    def half_adder(self, a: PhasedBitRef, b: PhasedBitRef) -> tuple[PhasedBitRef, PhasedBitRef]:
+        a_sig, a_rank, _ = self.materialize_positive(a)
+        b_sig, b_rank, _ = self.materialize_positive(b)
         if a_sig == self.zero:
-            return b, (self.zero, -1)
+            return (b_sig, b_rank, False), (self.zero, -1, False)
         if b_sig == self.zero:
-            return a, (self.zero, -1)
+            return (a_sig, a_rank, False), (self.zero, -1, False)
         base_rank = max(a_rank, b_rank)
         sum_wire = self.logic_xor2(a_sig, b_sig, cell=COMPRESS_XOR2_CELL)
         carry_wire = self.logic_and(a_sig, b_sig)
-        return (sum_wire, base_rank + 2), (carry_wire, base_rank + 1)
+        return (sum_wire, base_rank + 2, False), (carry_wire, base_rank + 1, False)
 
-    def full_adder(self, a: BitRef, b: BitRef, c: BitRef) -> tuple[BitRef, BitRef]:
-        a_sig, a_rank = a
-        b_sig, b_rank = b
-        c_sig, c_rank = c
+    def full_adder(self, a: PhasedBitRef, b: PhasedBitRef, c: PhasedBitRef) -> tuple[PhasedBitRef, PhasedBitRef]:
+        a_sig, a_rank, _ = self.materialize_positive(a)
+        b_sig, b_rank, _ = self.materialize_positive(b)
+        c_sig, c_rank, _ = self.materialize_positive(c)
         if a_sig == self.zero:
             return self.half_adder(b, c)
         if b_sig == self.zero:
@@ -149,9 +174,24 @@ class NetlistBuilder:
         base_rank = max(a_rank, b_rank, c_rank)
         sum_wire = self.logic_xor3(a_sig, b_sig, c_sig)
         carry_wire = self.logic_maj3(a_sig, b_sig, c_sig)
-        return (sum_wire, base_rank + 2), (carry_wire, base_rank + 1)
+        return (sum_wire, base_rank + 2, False), (carry_wire, base_rank + 1, False)
 
-    def reduce_dadda(self, cols: list[list[BitRef]]) -> list[list[BitRef]]:
+    def mixed_stage_half_adder(self, a: PhasedBitRef, b: PhasedBitRef) -> tuple[PhasedBitRef, PhasedBitRef]:
+        a_sig, a_rank, _ = self.materialize_positive(a)
+        b_sig, b_rank, _ = self.materialize_positive(b)
+        base_rank = max(a_rank, b_rank)
+        sum_bar, carry_bar = self.mixed_half_adder(a_sig, b_sig)
+        return (sum_bar, base_rank + 2, True), (carry_bar, base_rank + 1, True)
+
+    def mixed_stage_full_adder(self, a: PhasedBitRef, b: PhasedBitRef, c: PhasedBitRef) -> tuple[PhasedBitRef, PhasedBitRef]:
+        a_sig, a_rank, _ = self.materialize_positive(a)
+        b_sig, b_rank, _ = self.materialize_positive(b)
+        c_sig, c_rank, _ = self.materialize_positive(c)
+        base_rank = max(a_rank, b_rank, c_rank)
+        sum_bar, carry_bar = self.mixed_full_adder(a_sig, b_sig, c_sig)
+        return (sum_bar, base_rank + 2, True), (carry_bar, base_rank + 1, True)
+
+    def reduce_dadda(self, cols: list[list[PhasedBitRef]]) -> list[list[PhasedBitRef]]:
         max_height = max(len(col) for col in cols[:-1])
         limits = [2]
         while limits[-1] < max_height:
@@ -161,18 +201,25 @@ class NetlistBuilder:
                 # Compress earlier-arriving bits first so late signals avoid
                 # extra sum-stage depth when the column is over target height.
                 work = sorted(cols[idx], key=lambda item: item[1])
-                reduced: list[BitRef] = []
+                reduced: list[PhasedBitRef] = []
                 while len(reduced) + len(work) > target:
                     excess = len(reduced) + len(work) - target
+                    use_mixed = target == 2 and idx < 12
                     if excess == 1:
                         a = work.pop(0)
                         b = work.pop(0)
-                        sum_wire, carry_wire = self.half_adder(a, b)
+                        if use_mixed:
+                            sum_wire, carry_wire = self.mixed_stage_half_adder(a, b)
+                        else:
+                            sum_wire, carry_wire = self.half_adder(a, b)
                     else:
                         a = work.pop(0)
                         b = work.pop(0)
                         c = work.pop(0)
-                        sum_wire, carry_wire = self.full_adder(a, b, c)
+                        if use_mixed:
+                            sum_wire, carry_wire = self.mixed_stage_full_adder(a, b, c)
+                        else:
+                            sum_wire, carry_wire = self.full_adder(a, b, c)
                     reduced.append(sum_wire)
                     cols[idx + 1].append(carry_wire)
                 reduced.extend(work)
@@ -180,7 +227,7 @@ class NetlistBuilder:
         return cols
 
     def build(self) -> str:
-        cols: list[list[BitRef]] = [[] for _ in range(WIDTH + 1)]
+        cols: list[list[PhasedBitRef]] = [[] for _ in range(WIDTH + 1)]
 
         self.emit(f"module {TOP}(A, B, C, D);")
         self.emit("input  [15:0] A;")
@@ -196,10 +243,10 @@ class NetlistBuilder:
                 pp = self.new_wire("pp")
                 self.emit(f"wire {pp};")
                 self.emit_pos_inst(AND2_CELL, pp, f"A[{i}]", f"B[{j}]")
-                cols[i + j].append((pp, 0))
+                cols[i + j].append((pp, 0, False))
 
         for bit in range(WIDTH):
-            cols[bit].append((f"C[{bit}]", 0))
+            cols[bit].append((f"C[{bit}]", 0, False))
 
         cols = self.reduce_dadda(cols)
 
@@ -207,8 +254,14 @@ class NetlistBuilder:
         row_a: list[str] = []
         row_b: list[str] = []
         for idx in range(WIDTH):
-            row_a.append(cols[idx][0][0] if len(cols[idx]) >= 1 else self.zero)
-            row_b.append(cols[idx][1][0] if len(cols[idx]) >= 2 else self.zero)
+            if len(cols[idx]) >= 1:
+                row_a.append(self.materialize_positive(cols[idx][0])[0])
+            else:
+                row_a.append(self.zero)
+            if len(cols[idx]) >= 2:
+                row_b.append(self.materialize_positive(cols[idx][1])[0])
+            else:
+                row_b.append(self.zero)
 
         bit_p: list[str] = []
         p_prev: list[str] = []
