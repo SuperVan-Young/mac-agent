@@ -12,13 +12,17 @@ WIDTH = 32
 AND2_CELL = "AND2x2_ASAP7_75t_R"
 XOR2_CELL = "XOR2x2_ASAP7_75t_R"
 XNOR2_CELL = "XNOR2xp5_ASAP7_75t_R"
+XNOR2_FAST_CELL = "XNOR2x2_ASAP7_75t_R"
 COMPRESS_XOR2_CELL = "XOR2xp5_ASAP7_75t_R"
 OUTPUT_XOR2_CELL = "XOR2xp5_ASAP7_75t_R"
 AO21_CELL = "AO21x1_ASAP7_75t_R"
 AOI21_CELL = "AOI21xp5_ASAP7_75t_R"
 MAJ_CELL = "MAJx2_ASAP7_75t_R"
+NOR2_CELL = "NOR2xp33_ASAP7_75t_R"
 PREFIX_FAST_LO = 14
 PREFIX_FAST_HI = 21
+MIXED_HIGH_LO = 22
+MIXED_HIGH_HI = 29
 BitRef = tuple[str, int]
 PhasedBitRef = tuple[str, int, bool]
 
@@ -48,6 +52,16 @@ class NetlistBuilder:
         out = self.new_wire("and")
         self.emit(f"wire {out};")
         self.emit_pos_inst(AND2_CELL, out, a, b)
+        return out
+
+    def logic_nor(self, a: str, b: str) -> str:
+        if a == self.zero:
+            return self.logic_inv(b)
+        if b == self.zero:
+            return self.logic_inv(a)
+        out = self.new_wire("nor")
+        self.emit(f"wire {out};")
+        self.emit_pos_inst(NOR2_CELL, out, a, b)
         return out
 
     def logic_inv(self, a: str) -> str:
@@ -149,6 +163,11 @@ class NetlistBuilder:
             return XOR2_CELL
         return COMPRESS_XOR2_CELL
 
+    def prefix_xnor_cell(self, bit_idx: int) -> str:
+        if PREFIX_FAST_LO <= bit_idx <= PREFIX_FAST_HI:
+            return XNOR2_FAST_CELL
+        return XNOR2_CELL
+
     def half_adder(self, a: PhasedBitRef, b: PhasedBitRef) -> tuple[PhasedBitRef, PhasedBitRef]:
         a_sig, a_rank, _ = self.materialize_positive(a)
         b_sig, b_rank, _ = self.materialize_positive(b)
@@ -204,7 +223,7 @@ class NetlistBuilder:
                 reduced: list[PhasedBitRef] = []
                 while len(reduced) + len(work) > target:
                     excess = len(reduced) + len(work) - target
-                    use_mixed = target == 2 and idx < 12
+                    use_mixed = target == 2 and (idx < 12 or MIXED_HIGH_LO <= idx <= MIXED_HIGH_HI)
                     if excess == 1:
                         a = work.pop(0)
                         b = work.pop(0)
@@ -251,24 +270,41 @@ class NetlistBuilder:
         cols = self.reduce_dadda(cols)
 
         self.emit("")
-        row_a: list[str] = []
-        row_b: list[str] = []
+        row_a_bits: list[PhasedBitRef] = []
+        row_b_bits: list[PhasedBitRef] = []
         for idx in range(WIDTH):
             if len(cols[idx]) >= 1:
-                row_a.append(self.materialize_positive(cols[idx][0])[0])
+                row_a_bits.append(cols[idx][0])
             else:
-                row_a.append(self.zero)
+                row_a_bits.append((self.zero, -1, False))
             if len(cols[idx]) >= 2:
-                row_b.append(self.materialize_positive(cols[idx][1])[0])
+                row_b_bits.append(cols[idx][1])
             else:
-                row_b.append(self.zero)
+                row_b_bits.append((self.zero, -1, False))
 
         bit_p: list[str] = []
         p_prev: list[str] = []
         g_prev: list[str] = []
         for idx in range(WIDTH):
-            p = self.logic_xor2(row_a[idx], row_b[idx], cell=self.prefix_xor_cell(idx))
-            g = self.logic_and(row_a[idx], row_b[idx])
+            a_sig, _, a_inv = row_a_bits[idx]
+            b_sig, _, b_inv = row_b_bits[idx]
+            if a_sig == self.zero or b_sig == self.zero:
+                a_sig, _, _ = self.materialize_positive(row_a_bits[idx])
+                b_sig, _, _ = self.materialize_positive(row_b_bits[idx])
+                p = self.logic_xor2(a_sig, b_sig, cell=self.prefix_xor_cell(idx))
+                g = self.logic_and(a_sig, b_sig)
+            elif a_inv == b_inv:
+                p = self.logic_xor2(a_sig, b_sig, cell=self.prefix_xor_cell(idx))
+                if a_inv:
+                    g = self.logic_nor(a_sig, b_sig)
+                else:
+                    g = self.logic_and(a_sig, b_sig)
+            else:
+                # Opposite-polarity survivors preserve parity via XNOR.
+                p = self.logic_xnor2(a_sig, b_sig, cell=self.prefix_xnor_cell(idx))
+                a_pos, _, _ = self.materialize_positive(row_a_bits[idx])
+                b_pos, _, _ = self.materialize_positive(row_b_bits[idx])
+                g = self.logic_and(a_pos, b_pos)
             bit_p.append(p)
             p_prev.append(p)
             g_prev.append(g)
