@@ -1,4 +1,4 @@
-"""Minimal pipeline for arith.compressor_tree -> logic -> asap7."""
+"""Compiler pipeline for arith -> logic -> asap7."""
 
 from __future__ import annotations
 
@@ -17,6 +17,7 @@ from .dialects.logic import LOGIC_DIALECT
 from .passes.emit_verilog import emit_verilog
 from .passes.lower_arith_to_logic import LowerArithToLogicPass
 from .passes.lower_logic_to_asap7 import LowerLogicToAsap7Pass
+from .passes.lower_multiplier_to_arith_parts import LowerMultiplierToArithPartsPass
 from .passes.verify_post_arith_to_logic import PostArithToLogicVerificationPass
 from .passes.verify_post_logic_to_physical import PostLogicToPhysicalVerificationPass
 
@@ -27,6 +28,7 @@ class PipelineResult:
 
 
 PASS_REGISTRY = {
+    "lower-multiplier-to-arith-parts": LowerMultiplierToArithPartsPass,
     "lower-arith-to-logic": LowerArithToLogicPass,
     "verify-post-arith-to-logic": PostArithToLogicVerificationPass,
     "lower-logic-to-asap7": LowerLogicToAsap7Pass,

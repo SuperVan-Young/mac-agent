@@ -30,6 +30,28 @@ class Xor2Op(IRDLOperation):
 
 
 @irdl_op_definition
+class Or2Op(IRDLOperation):
+    name = "asap7.or2"
+
+    instance_name = prop_def(StringAttr)
+    output = prop_def(StringAttr)
+    lhs = prop_def(StringAttr)
+    rhs = prop_def(StringAttr)
+    owner = prop_def(StringAttr)
+
+    def __init__(self, *, instance_name: str, output: str, lhs: str, rhs: str, owner: str) -> None:
+        super().__init__(
+            properties={
+                "instance_name": StringAttr(instance_name),
+                "output": StringAttr(output),
+                "lhs": StringAttr(lhs),
+                "rhs": StringAttr(rhs),
+                "owner": StringAttr(owner),
+            }
+        )
+
+
+@irdl_op_definition
 class And2Op(IRDLOperation):
     name = "asap7.and2"
 
@@ -125,5 +147,4 @@ class HalfAdderOp(IRDLOperation):
             }
         )
 
-
-ASAP7_DIALECT = Dialect("asap7", [Xor2Op, And2Op, FullAdderOp, HalfAdderOp], [])
+ASAP7_DIALECT = Dialect("asap7", [Xor2Op, Or2Op, And2Op, FullAdderOp, HalfAdderOp], [])

@@ -8,6 +8,36 @@ from xdsl.ir import Dialect
 
 
 @irdl_op_definition
+class And2Op(IRDLOperation):
+    name = "logic.and2"
+
+    instance_name = prop_def(StringAttr)
+    region_kind = prop_def(StringAttr)
+    output = prop_def(StringAttr)
+    lhs = prop_def(StringAttr)
+    rhs = prop_def(StringAttr)
+
+    def __init__(
+        self,
+        *,
+        instance_name: str,
+        region_kind: str,
+        output: str,
+        lhs: str,
+        rhs: str,
+    ) -> None:
+        super().__init__(
+            properties={
+                "instance_name": StringAttr(instance_name),
+                "region_kind": StringAttr(region_kind),
+                "output": StringAttr(output),
+                "lhs": StringAttr(lhs),
+                "rhs": StringAttr(rhs),
+            }
+        )
+
+
+@irdl_op_definition
 class FullAdderOp(IRDLOperation):
     name = "logic.full_adder"
 
@@ -76,4 +106,4 @@ class HalfAdderOp(IRDLOperation):
         )
 
 
-LOGIC_DIALECT = Dialect("logic", [FullAdderOp, HalfAdderOp], [])
+LOGIC_DIALECT = Dialect("logic", [And2Op, FullAdderOp, HalfAdderOp], [])

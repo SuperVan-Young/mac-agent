@@ -11,6 +11,7 @@ from xdsl.printer import Printer
 from rtl.compiler.passes.emit_verilog import emit_verilog
 from rtl.compiler.passes.lower_arith_to_logic import LowerArithToLogicPass
 from rtl.compiler.passes.lower_logic_to_asap7 import LowerLogicToAsap7Pass
+from rtl.compiler.passes.lower_multiplier_to_arith_parts import LowerMultiplierToArithPartsPass
 from rtl.compiler.pipeline import build_context
 from rtl.compiler.passes.verify_post_arith_to_logic import PostArithToLogicVerificationPass
 from rtl.compiler.passes.verify_post_logic_to_physical import PostLogicToPhysicalVerificationPass
@@ -94,7 +95,9 @@ def execute_run_spec(run_spec: RunSpec, source: str) -> str:
     emit = run_spec.emit
 
     for pass_name in run_spec.passes:
-        if pass_name == "lower-arith-to-logic":
+        if pass_name == "lower-multiplier-to-arith-parts":
+            LowerMultiplierToArithPartsPass().apply(ctx, module)
+        elif pass_name == "lower-arith-to-logic":
             LowerArithToLogicPass().apply(ctx, module)
         elif pass_name == "verify-post-arith-to-logic":
             PostArithToLogicVerificationPass().apply(ctx, module)
