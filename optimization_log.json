@@ -269,6 +269,24 @@
         "area": 144.0,
         "cell_count": 1257
       }
+    },
+    {
+      "iteration": 14,
+      "metadata": {
+        "source": "agent",
+        "dut": "mac16x16p32.v",
+        "top_module": "mac16x16p32",
+        "comment": "Promoted worker-claude-b1 after rewriting the top output bit to keep its local parity in the complemented domain until the final XOR, eliminating unnecessary high-bit carry/polarity restoration logic."
+      },
+      "result_summary": {
+        "correctness": "pass",
+        "timing_status": "pass",
+        "wns": 0.3343,
+        "tns": 0.0,
+        "critical_delay": 0.5657,
+        "area": 143.0,
+        "cell_count": 1246
+      }
     }
   ]
 }
