@@ -5,7 +5,7 @@ from __future__ import annotations
 from io import StringIO
 
 from xdsl.context import Context
-from xdsl.dialects.builtin import ModuleOp
+from xdsl.dialects.builtin import Builtin, ModuleOp
 from xdsl.printer import Printer
 
 from .dialects.arith.xdsl import ARITH_DIALECT, CompressorTreeOp
@@ -34,6 +34,7 @@ def build_demo_compressor_tree_module(reduction_type: str = "dadda") -> ModuleOp
 
 def build_xdsl_context() -> Context:
     ctx = Context()
+    ctx.load_dialect(Builtin)
     ctx.load_dialect(ARITH_DIALECT)
     ctx.load_dialect(COMP_DIALECT)
     ctx.load_dialect(ASAP7_DIALECT)
