@@ -303,7 +303,9 @@ class NetlistBuilder:
         bit_p: list[str] = []
         p_prev: list[str] = []
         g_prev: list[str] = []
-        for idx in range(WIDTH):
+        top_sum_sig = self.zero
+        top_sum_use_xor = False
+        for idx in range(WIDTH - 1):
             a_sig, _, a_inv = row_a_bits[idx]
             b_sig, _, b_inv = row_b_bits[idx]
             if a_sig == self.zero or b_sig == self.zero:
@@ -327,10 +329,24 @@ class NetlistBuilder:
             p_prev.append(p)
             g_prev.append(g)
 
+        a_sig, _, a_inv = row_a_bits[WIDTH - 1]
+        b_sig, _, b_inv = row_b_bits[WIDTH - 1]
+        if a_sig == self.zero or b_sig == self.zero:
+            a_sig, _, _ = self.materialize_positive(row_a_bits[WIDTH - 1])
+            b_sig, _, _ = self.materialize_positive(row_b_bits[WIDTH - 1])
+            top_sum_sig = self.logic_xor2(a_sig, b_sig, cell=OUTPUT_XOR2_CELL)
+        elif a_inv == b_inv:
+            top_sum_sig = self.logic_xor2(a_sig, b_sig, cell=OUTPUT_XOR2_CELL)
+        else:
+            # D[31] only needs the incoming carry from bit 30, so keep the
+            # local parity complemented and consume it directly with XOR.
+            top_sum_sig = self.logic_xor2(a_sig, b_sig, cell=OUTPUT_XOR2_CELL)
+            top_sum_use_xor = True
+
         for distance in (1, 2, 4, 8):
             p_next: list[str] = []
             g_next: list[str] = []
-            for idx in range(WIDTH):
+            for idx in range(WIDTH - 1):
                 if idx < distance:
                     p = p_prev[idx]
                     g = g_prev[idx]
@@ -343,11 +359,11 @@ class NetlistBuilder:
             g_prev = g_next
 
         final_carry_bar = [self.zero] * WIDTH
-        for idx in range(16, WIDTH):
+        for idx in range(16, WIDTH - 1):
             final_carry_bar[idx] = self.logic_aoi21(p_prev[idx], g_prev[idx - 16], g_prev[idx])
 
         self.emit("")
-        for idx in range(WIDTH):
+        for idx in range(WIDTH - 1):
             if idx == 0:
                 sum_wire = bit_p[idx]
             elif idx <= 16:
@@ -355,6 +371,11 @@ class NetlistBuilder:
             else:
                 sum_wire = self.logic_xnor2(final_carry_bar[idx - 1], bit_p[idx], cell=XNOR2_CELL)
             self.emit(f"assign D[{idx}] = {sum_wire};")
+        if top_sum_use_xor:
+            sum_wire = self.logic_xor2(final_carry_bar[WIDTH - 2], top_sum_sig, cell=OUTPUT_XOR2_CELL)
+        else:
+            sum_wire = self.logic_xnor2(final_carry_bar[WIDTH - 2], top_sum_sig, cell=XNOR2_CELL)
+        self.emit(f"assign D[{WIDTH - 1}] = {sum_wire};")
 
         self.emit("endmodule")
         self.emit("")
