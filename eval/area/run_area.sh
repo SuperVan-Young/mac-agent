@@ -4,7 +4,7 @@ set -euo pipefail
 usage() {
   cat <<'USAGE'
 Usage:
-  eval/run_area.sh
+  eval/area/run_area.sh
 
 Low-level area wrapper intended to be called by Makefile.
 Required environment variables:

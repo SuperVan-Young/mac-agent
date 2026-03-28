@@ -14,14 +14,15 @@ else
 EVAL_NETLIST ?= $(DUT)
 endif
 
-.PHONY: help print-config dirs check sim synth generate-sdc timing area area-debug summary all clean
+.PHONY: help print-config dirs generate check sim synth generate-sdc timing area area-debug summary all clean
 
 help:
 	@printf '%s\n' \
 	  'Usage: make [target] [CONFIG=/path/to/config.mk]' \
 	  '' \
 	  'Core targets:' \
-	  '  make all            # baseline: synth/check/sim/timing/area/summary; candidate: check/sim/timing/area/summary' \
+	  '  make all            # baseline: synth/check/sim/timing/area/summary; candidate: generate/check/sim/timing/area/summary' \
+	  '  make generate       # emit candidate RTL through rtl/generate.py' \
 	  '  make check          # candidate legality check' \
 	  '  make sim            # RTL/gate simulation' \
 	  '  make synth          # baseline synthesis (Genus)' \
@@ -32,6 +33,7 @@ help:
 	  '' \
 	  'Useful variables (override in CONFIG or on CLI):' \
 	  '  DESIGN_NAME, DESIGN_TYPE, DUT, FLOW_RESULTS_ROOT, RESULTS_DIR' \
+	  '  GENERATE_ENABLE, RTL_GENERATOR, GENERATED_DUT, GENERATED_IR, GENERATE_INPUT_MLIR, GENERATE_DUMP_IR' \
 	  '  MAC_A_WIDTH, MAC_B_WIDTH, MAC_ACC_WIDTH, MAC_PIPELINE_CYCLES' \
 	  '  OPENROAD_CONDA_PREFIX, LIBERTY_PATHS, LEF_PATHS' \
 	  '  STA_PERIOD_NS, STA_INPUT_DELAY_NS, STA_OUTPUT_DELAY_NS' \
@@ -46,6 +48,12 @@ print-config:
 	  "DESIGN_NAME=$(DESIGN_NAME)" \
 	  "DESIGN_TYPE=$(DESIGN_TYPE)" \
 	  "DUT=$(DUT)" \
+	  "GENERATE_ENABLE=$(GENERATE_ENABLE)" \
+	  "RTL_GENERATOR=$(RTL_GENERATOR)" \
+	  "GENERATED_DUT=$(GENERATED_DUT)" \
+	  "GENERATED_IR=$(GENERATED_IR)" \
+	  "GENERATE_INPUT_MLIR=$(GENERATE_INPUT_MLIR)" \
+	  "GENERATE_DUMP_IR=$(GENERATE_DUMP_IR)" \
 	  "FLOW_RESULTS_ROOT=$(FLOW_RESULTS_ROOT)" \
 	  "SCHEDULER_INSPECT_PATH=$(FLOW_RESULTS_ROOT)" \
 	  "EVAL_NETLIST=$(EVAL_NETLIST)" \
@@ -66,13 +74,39 @@ print-config:
 	  "STA_OUTPUT_DELAY_NS=$(STA_OUTPUT_DELAY_NS)"
 
 dirs:
-	@mkdir -p "$(RESULTS_DIR)" "$(LOG_DIR)" "$(SIM_OUT_DIR)" "$(EVAL_OUT_DIR)" "$(SYN_OUT_DIR)" "$(SYN_RPT_DIR)"
+	@mkdir -p "$(RESULTS_DIR)" "$(LOG_DIR)" "$(SIM_OUT_DIR)" "$(EVAL_OUT_DIR)" "$(SYN_OUT_DIR)" "$(SYN_RPT_DIR)" "$(GENERATED_RTL_DIR)"
 
-check: dirs
+generate: dirs
+ifeq ($(DESIGN_TYPE),candidate)
+ifeq ($(GENERATE_ENABLE),1)
+	@mkdir -p "$(dir $(DUT))"
+	@command -v conda >/dev/null 2>&1 || { echo "ERROR: conda not found in PATH"; exit 127; }
+	@if [ "$(GENERATE_DUMP_IR)" = "1" ]; then \
+	  mkdir -p "$(dir $(GENERATED_IR))"; \
+	  if [ -n "$(GENERATE_INPUT_MLIR)" ]; then \
+	    conda run -p "$(OPENROAD_CONDA_PREFIX)" python "$(RTL_GENERATOR)" --input-mlir "$(GENERATE_INPUT_MLIR)" --output-verilog "$(DUT)" --output-ir "$(GENERATED_IR)" --top-name "$(TOP_MODULE)"; \
+	  else \
+	    conda run -p "$(OPENROAD_CONDA_PREFIX)" python "$(RTL_GENERATOR)" --output-verilog "$(DUT)" --output-ir "$(GENERATED_IR)" --top-name "$(TOP_MODULE)"; \
+	  fi; \
+	else \
+	  if [ -n "$(GENERATE_INPUT_MLIR)" ]; then \
+	    conda run -p "$(OPENROAD_CONDA_PREFIX)" python "$(RTL_GENERATOR)" --input-mlir "$(GENERATE_INPUT_MLIR)" --output-verilog "$(DUT)" --top-name "$(TOP_MODULE)"; \
+	  else \
+	    conda run -p "$(OPENROAD_CONDA_PREFIX)" python "$(RTL_GENERATOR)" --output-verilog "$(DUT)" --top-name "$(TOP_MODULE)"; \
+	  fi; \
+	fi
+else
+	@printf '%s\n' 'SKIP: candidate RTL generation disabled'
+endif
+else
+	@printf '%s\n' 'SKIP: RTL generation target only applies to candidate design type'
+endif
+
+check: dirs generate
 	@mkdir -p "$(dir $(CHECK_LOG))"
 ifeq ($(CHECK_ENABLE),1)
 ifeq ($(DESIGN_TYPE),candidate)
-	@python3 "$(REPO_ROOT)/check/check_candidate_netlist.py" "$(DUT)" --liberty "$(LIBERTY_PATHS)" | tee "$(CHECK_LOG)"
+	@python3 "$(REPO_ROOT)/eval/check/check_candidate_netlist.py" "$(DUT)" --liberty "$(LIBERTY_PATHS)" | tee "$(CHECK_LOG)"
 else
 	@printf '%s\n' 'SKIP: baseline design does not run candidate legality check' | tee "$(CHECK_LOG)"
 endif
@@ -82,7 +116,7 @@ endif
 
 sim: check
 	@mkdir -p "$(SIM_OUT_DIR)" "$(dir $(SIM_LOG))"
-	@bash "$(REPO_ROOT)/sim/run_rtl_sim.sh" \
+	@bash "$(REPO_ROOT)/eval/sim/run_rtl_sim.sh" \
 	  -d "$(DUT)" \
 	  -n "$(SIM_RANDOM_COUNT)" \
 	  -s "$(SIM_SEED)" \
@@ -108,7 +142,7 @@ ifeq ($(DESIGN_TYPE),baseline)
 	  GENUS_PIPELINE_CYCLES="$(MAC_PIPELINE_CYCLES)" \
 	  GENUS_OUT_DIR="$(SYN_OUT_DIR)" \
 	  GENUS_RPT_DIR="$(SYN_RPT_DIR)" \
-	  genus -no_gui -files "$(REPO_ROOT)/syn/run.tcl" > "$(SYN_LOG)" 2>&1
+	  genus -no_gui -files "$(REPO_ROOT)/eval/syn/run.tcl" > "$(SYN_LOG)" 2>&1
 else
 	@printf '%s\n' 'SKIP: synthesis target only applies to baseline design type' > "$(SYN_LOG)"
 endif
@@ -141,7 +175,7 @@ timing: sim generate-sdc
 	  TIMING_SUMMARY_REPORT="$(TIMING_SUMMARY)" \
 	  CRITICAL_PATH_REPORT="$(CRITICAL_PATH)" \
 	  OPENROAD_CONDA_PREFIX="$(OPENROAD_CONDA_PREFIX)" \
-	  bash "$(REPO_ROOT)/eval/run_timer.sh" openroad > "$(TIMING_LOG)" 2>&1
+	  bash "$(REPO_ROOT)/eval/timing/run_timer.sh" openroad > "$(TIMING_LOG)" 2>&1
 
 area: sim
 	@mkdir -p "$(EVAL_OUT_DIR)" "$(dir $(AREA_LOG))" "$(dir $(AREA_JSON))"
@@ -155,7 +189,7 @@ area: sim
 	  AREA_DETAIL_ENABLE=0 \
 	  AREA_JSON="$(AREA_JSON)" \
 	  OPENROAD_CONDA_PREFIX="$(OPENROAD_CONDA_PREFIX)" \
-	  bash "$(REPO_ROOT)/eval/run_area.sh"
+	  bash "$(REPO_ROOT)/eval/area/run_area.sh"
 
 area-debug: sim
 	@mkdir -p "$(EVAL_OUT_DIR)" "$(dir $(AREA_LOG))" "$(dir $(AREA_JSON))"
@@ -173,10 +207,10 @@ area-debug: sim
 	  AREA_GROUP_DETAIL_REPORT="$(AREA_GROUP_DETAIL_REPORT)" \
 	  AREA_JSON="$(AREA_JSON)" \
 	  OPENROAD_CONDA_PREFIX="$(OPENROAD_CONDA_PREFIX)" \
-	  bash "$(REPO_ROOT)/eval/run_area.sh"
+	  bash "$(REPO_ROOT)/eval/area/run_area.sh"
 
 summary: timing area
-	@python3 "$(REPO_ROOT)/eval/parse_reports.py" \
+	@python3 "$(REPO_ROOT)/eval/summary/parse_reports.py" \
 	  --design-name "$(DESIGN_NAME)" \
 	  --design-type "$(DESIGN_TYPE)" \
 	  --top "$(TOP_MODULE)" \

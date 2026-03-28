@@ -4,7 +4,7 @@ set -euo pipefail
 usage() {
   cat <<'USAGE'
 Usage:
-  eval/run_timer.sh openroad [--max-paths N] [--endpoint-count N] [--from PINS] [--to PINS] [--output-report PATH]
+  eval/timing/run_timer.sh openroad [--max-paths N] [--endpoint-count N] [--from PINS] [--to PINS] [--output-report PATH]
 
 This is a low-level timing wrapper intended to be called by Makefile.
 Required environment variables:

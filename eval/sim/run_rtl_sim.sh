@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-SIM_DIR="${ROOT_DIR}/sim"
-OUT_DIR="${SIM_DIR}/out"
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+SIM_DIR="${ROOT_DIR}/eval/sim"
+OUT_DIR="${ROOT_DIR}/results/fixed/sim"
 DUT_PATH="${ROOT_DIR}/rtl/baseline.v"
 RANDOM_COUNT=5000
 SEED=1
@@ -25,7 +25,7 @@ Options:
   -s  RNG seed (default: 1)
   -S  comma-separated RNG seed list; each seed launches one simulation
   -j  max parallel simulation jobs (default: number of seeds; 0 means auto)
-  -o  output directory (default: sim/out)
+  -o  output directory (default: results/fixed/sim)
   -a  A input width (default: 16)
   -b  B input width (default: 16)
   -w  C/D accumulator width (default: 32)
@@ -90,8 +90,12 @@ if [[ ! -f "${DUT_PATH}" ]]; then
     exit 2
 fi
 
-ROOT_CANDIDATE="${ROOT_DIR}/mac16x16p32.v"
+ROOT_CANDIDATE="${ROOT_DIR}/results/fixed/generated/mac16x16p32.v"
 RTL_CANDIDATE="${ROOT_DIR}/rtl/mac16x16p32.v"
+LEGACY_ROOT_CANDIDATE="${ROOT_DIR}/mac16x16p32.v"
+if [[ ! -f "${ROOT_CANDIDATE}" && -f "${LEGACY_ROOT_CANDIDATE}" ]]; then
+    ROOT_CANDIDATE="${LEGACY_ROOT_CANDIDATE}"
+fi
 if [[ -f "${ROOT_CANDIDATE}" && -f "${RTL_CANDIDATE}" ]] && ! cmp -s "${ROOT_CANDIDATE}" "${RTL_CANDIDATE}"; then
     echo "WARN: candidate RTL copies differ:" >&2
     echo "WARN:   using DUT=${DUT_PATH}" >&2

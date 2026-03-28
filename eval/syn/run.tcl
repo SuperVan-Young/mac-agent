@@ -9,8 +9,8 @@
 #   GENUS_B_WIDTH         (default: 16)
 #   GENUS_ACC_WIDTH       (default: 32)
 #   GENUS_PIPELINE_CYCLES (default: 1)
-#   GENUS_OUT_DIR         (default: syn/outputs)
-#   GENUS_RPT_DIR         (default: syn/reports)
+#   GENUS_OUT_DIR         (default: eval/syn/outputs)
+#   GENUS_RPT_DIR         (default: eval/syn/reports)
 #   GENUS_DRY_RUN         (default: 0; if 1, parse-only sanity mode)
 
 proc env_or_default {name default_value} {
@@ -21,7 +21,7 @@ proc env_or_default {name default_value} {
 }
 
 set script_dir [file dirname [file normalize [info script]]]
-set repo_root [file normalize [file join $script_dir ..]]
+set repo_root [file normalize [file join $script_dir .. ..]]
 set DEFAULT_LIB_FILES [join [list \
     [file join $repo_root tech asap7 lib NLDM asap7sc7p5t_AO_RVT_TT_nldm_211120.lib] \
     [file join $repo_root tech asap7 lib NLDM asap7sc7p5t_INVBUF_RVT_TT_nldm_220122.lib] \
