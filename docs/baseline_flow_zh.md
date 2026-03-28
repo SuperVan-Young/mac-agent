@@ -15,7 +15,7 @@
 OpenROAD conda 环境可按需检查：
 
 ```bash
-bash env/setup_openroad_conda.sh --prefix /tmp/mac-agent-openroad-env --skip-install
+bash env/setup_conda.sh --prefix /tmp/mac-agent-openroad-env --skip-install
 ```
 
 ## 一键运行 baseline

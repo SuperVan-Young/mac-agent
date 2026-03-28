@@ -3,8 +3,9 @@
 ## Environment Setup
 
 1. Install/check the OpenROAD conda environment:
-   - `bash env/setup_openroad_conda.sh`
-   - or `bash env/setup_openroad_conda.sh --prefix /tmp/mac-agent-openroad-env --skip-install`
+   - `bash env/setup_conda.sh`
+   - or `bash env/setup_conda.sh --prefix /tmp/mac-agent-openroad-env --skip-install`
+   - Python-side dependencies such as `xdsl` are installed from the repo-root `requirements.txt`
 2. Ensure common tools are available in `PATH`:
    - `python3`, `iverilog`, `vvp`, `conda`
 3. Baseline synthesis additionally requires:

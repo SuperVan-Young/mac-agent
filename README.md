@@ -10,3 +10,8 @@
 - [docs/baseline_flow_zh.md](/home/xuechenhao/mac-agent/docs/baseline_flow_zh.md)
 - [docs/timing_debug_guide_zh.md](/home/xuechenhao/mac-agent/docs/timing_debug_guide_zh.md)
 - [tech/asap7/README.md](/home/xuechenhao/mac-agent/tech/asap7/README.md)
+
+环境准备统一入口：
+
+- `bash env/setup_conda.sh`
+- Python 依赖统一由仓库根目录的 `requirements.txt` 管理
