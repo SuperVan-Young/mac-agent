@@ -110,6 +110,28 @@ class CellModel:
     arcs: dict[tuple[str, str], ArcModel]
 
 
+@dataclass(frozen=True)
+class CompressorOp:
+    kind: str
+    column: int
+    use_mixed: bool
+    inputs: tuple[str, ...]
+    sum_out: str
+    carry_out: str
+
+
+@dataclass(frozen=True)
+class CompressorStage:
+    target: int
+    operations: tuple[CompressorOp, ...]
+
+
+@dataclass(frozen=True)
+class CompressorTreeIR:
+    stages: tuple[CompressorStage, ...]
+    outputs: tuple[tuple[str, ...], ...]
+
+
 class LibertyTimingModel:
     def __init__(self, liberty_paths: tuple[Path, ...], modeled_cells: set[str]) -> None:
         self.cells: dict[str, CellModel] = {}
@@ -260,6 +282,7 @@ class NetlistBuilder:
         self.signal_timing: dict[str, TimingState] = {
             self.zero: TimingState(arrival=0.0, slew=DEFAULT_INPUT_SLEW)
         }
+        self.compressor_tree_ir = CompressorTreeIR(stages=(), outputs=())
 
     def new_wire(self, prefix: str) -> str:
         self.counter += 1
@@ -570,9 +593,12 @@ class NetlistBuilder:
         limits = [2]
         while limits[-1] < max_height:
             limits.append((limits[-1] * 3) // 2)
+
+        stages: list[CompressorStage] = []
         for target in reversed(limits[:-1]):
             stage_cols = [sorted(list(col), key=lambda item: item[1]) for col in cols]
             next_cols: list[list[PhasedBitRef]] = [[] for _ in cols]
+            ops: list[CompressorOp] = []
             for idx in range(len(cols) - 1):
                 # Compress earlier-arriving bits first so late signals avoid
                 # extra sum-stage depth when the column is over target height.
@@ -583,7 +609,11 @@ class NetlistBuilder:
                 reduced: list[PhasedBitRef] = []
                 while carried_in + len(reduced) + len(work) > target:
                     excess = carried_in + len(reduced) + len(work) - target
-                    use_mixed = target == 2 and (idx < 12 or MIXED_HIGH_LO <= idx <= MIXED_HIGH_HI)
+                    # The low-bit mixed window can produce invalid polarity
+                    # interactions when combined with the high-bit mixed tail.
+                    # Keep mixed compressors only in the upper window where
+                    # they still buy timing without breaking correctness.
+                    use_mixed = target == 2 and MIXED_HIGH_LO <= idx <= MIXED_HIGH_HI
                     if excess == 1:
                         a = work.pop(0)
                         b = work.pop(0)
@@ -591,6 +621,8 @@ class NetlistBuilder:
                             sum_wire, carry_wire = self.mixed_stage_half_adder(a, b)
                         else:
                             sum_wire, carry_wire = self.half_adder(a, b, idx)
+                        op_kind = "ha"
+                        input_bits = (a, b)
                     else:
                         a = work.pop(0)
                         b = work.pop(0)
@@ -599,12 +631,29 @@ class NetlistBuilder:
                             sum_wire, carry_wire = self.mixed_stage_full_adder(a, b, c)
                         else:
                             sum_wire, carry_wire = self.full_adder(a, b, c, idx)
+                        op_kind = "fa"
+                        input_bits = (a, b, c)
+                    ops.append(
+                        CompressorOp(
+                            kind=op_kind,
+                            column=idx,
+                            use_mixed=use_mixed,
+                            inputs=tuple(bit[0] for bit in input_bits),
+                            sum_out=sum_wire[0],
+                            carry_out=carry_wire[0],
+                        )
+                    )
                     reduced.append(sum_wire)
                     next_cols[idx + 1].append(carry_wire)
                 reduced.extend(work)
                 next_cols[idx].extend(sorted(reduced, key=lambda item: item[1]))
             next_cols[-1].extend(stage_cols[-1])
             cols = [sorted(col, key=lambda item: item[1]) for col in next_cols]
+            stages.append(CompressorStage(target=target, operations=tuple(ops)))
+        self.compressor_tree_ir = CompressorTreeIR(
+            stages=tuple(stages),
+            outputs=tuple(tuple(bit[0] for bit in col) for col in cols),
+        )
         return cols
 
     def build(self) -> str:
