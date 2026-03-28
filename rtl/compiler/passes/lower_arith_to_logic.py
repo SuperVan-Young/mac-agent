@@ -23,7 +23,7 @@ from ..dialects.arith import (
     decode_columns,
     decode_terms,
 )
-from ..dialects.logic import And2Op, FullAdderOp, HalfAdderOp, Or2Op, Xor2Op
+from ..dialects.logic import And2Op, Ao21Op, FullAdderOp, HalfAdderOp, Or2Op, Xor2Op
 from .lower_multiplier_to_arith_parts import _plan_compressor_tree
 
 
@@ -105,14 +105,14 @@ class LowerPrefixTreeToLogicPattern(RewritePattern):
 
     def _lower_kogge_stone(
         self, op: PrefixTreeOp
-    ) -> list[And2Op | Or2Op | Xor2Op]:
+    ) -> list[And2Op | Ao21Op | Xor2Op]:
         lhs_row = decode_bit_map(op.lhs_row)
         rhs_row = decode_bit_map(op.rhs_row)
         max_bit = max(set(lhs_row) | set(rhs_row), default=-1)
         if max_bit < 0:
             return []
 
-        new_ops: list[And2Op | Or2Op | Xor2Op] = []
+        new_ops: list[And2Op | Ao21Op | Xor2Op] = []
         propagate: dict[int, str] = {}
         current_generate: dict[int, str] = {}
         current_propagate: dict[int, str] = {}
@@ -151,7 +151,6 @@ class LowerPrefixTreeToLogicPattern(RewritePattern):
             next_generate = dict(current_generate)
             for bit in range(span, max_bit + 1):
                 merged_propagate = f"pt_s{stage}_p_{bit}"
-                merged_generate_and = f"pt_s{stage}_gand_{bit}"
                 merged_generate = f"pt_s{stage}_g_{bit}"
                 new_ops.append(
                     And2Op(
@@ -163,21 +162,13 @@ class LowerPrefixTreeToLogicPattern(RewritePattern):
                     )
                 )
                 new_ops.append(
-                    And2Op(
-                        instance_name=f"pt_s{stage}_and_g_{bit}",
-                        region_kind="prefix_tree",
-                        output=merged_generate_and,
-                        lhs=current_propagate[bit],
-                        rhs=current_generate[bit - span],
-                    )
-                )
-                new_ops.append(
-                    Or2Op(
-                        instance_name=f"pt_s{stage}_or_g_{bit}",
+                    Ao21Op(
+                        instance_name=f"pt_s{stage}_ao21_g_{bit}",
                         region_kind="prefix_tree",
                         output=merged_generate,
-                        lhs=current_generate[bit],
-                        rhs=merged_generate_and,
+                        and_lhs=current_propagate[bit],
+                        and_rhs=current_generate[bit - span],
+                        or_rhs=current_generate[bit],
                     )
                 )
                 next_propagate[bit] = merged_propagate

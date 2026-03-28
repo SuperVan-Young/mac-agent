@@ -14,8 +14,13 @@ from xdsl.pattern_rewriter import (
     op_type_rewrite_pattern,
 )
 
-from ..dialects.asap7 import And2Op as Asap7And2Op, Or2Op as Asap7Or2Op, Xor2Op as Asap7Xor2Op
-from ..dialects.logic import And2Op, FullAdderOp, HalfAdderOp, Or2Op, Xor2Op
+from ..dialects.asap7 import (
+    And2Op as Asap7And2Op,
+    Ao21Op as Asap7Ao21Op,
+    Or2Op as Asap7Or2Op,
+    Xor2Op as Asap7Xor2Op,
+)
+from ..dialects.logic import And2Op, Ao21Op, FullAdderOp, HalfAdderOp, Or2Op, Xor2Op
 
 
 class LowerAnd2Pattern(RewritePattern):
@@ -49,6 +54,26 @@ class LowerOr2Pattern(RewritePattern):
                     output=op.output.data,
                     lhs=op.lhs.data,
                     rhs=op.rhs.data,
+                    owner=op.region_kind.data,
+                )
+            ],
+            safe_erase=True,
+        )
+
+
+class LowerAo21Pattern(RewritePattern):
+    @op_type_rewrite_pattern
+    def match_and_rewrite(self, op: Ao21Op, rewriter: PatternRewriter) -> None:
+        if op.region_kind.data not in {"compressor_tree", "prefix_tree"}:
+            return
+        rewriter.replace_matched_op(
+            [
+                Asap7Ao21Op(
+                    instance_name=op.instance_name.data,
+                    output=op.output.data,
+                    and_lhs=op.and_lhs.data,
+                    and_rhs=op.and_rhs.data,
+                    or_rhs=op.or_rhs.data,
                     owner=op.region_kind.data,
                 )
             ],
@@ -108,7 +133,6 @@ class LowerFullAdderPattern(RewritePattern):
             return
         ab_xor = f"{op.instance_name.data}_ab_xor"
         ab_and = f"{op.instance_name.data}_ab_and"
-        cin_and = f"{op.instance_name.data}_cin_and"
         rewriter.replace_matched_op(
             [
                 Asap7Xor2Op(
@@ -132,18 +156,12 @@ class LowerFullAdderPattern(RewritePattern):
                     rhs=op.rhs.data,
                     owner=op.region_kind.data,
                 ),
-                Asap7And2Op(
-                    instance_name=f"{op.instance_name.data}_and_cin",
-                    output=cin_and,
-                    lhs=ab_xor,
-                    rhs=op.cin.data,
-                    owner=op.region_kind.data,
-                ),
-                Asap7Or2Op(
-                    instance_name=f"{op.instance_name.data}_or_carry",
+                Asap7Ao21Op(
+                    instance_name=f"{op.instance_name.data}_ao21_carry",
                     output=op.carry_out.data,
-                    lhs=ab_and,
-                    rhs=cin_and,
+                    and_lhs=ab_xor,
+                    and_rhs=op.cin.data,
+                    or_rhs=ab_and,
                     owner=op.region_kind.data,
                 ),
             ],
@@ -159,6 +177,7 @@ class LowerLogicToAsap7Pass(ModulePass):
         del ctx
         PatternRewriteWalker(LowerAnd2Pattern(), apply_recursively=True).rewrite_module(op)
         PatternRewriteWalker(LowerOr2Pattern(), apply_recursively=True).rewrite_module(op)
+        PatternRewriteWalker(LowerAo21Pattern(), apply_recursively=True).rewrite_module(op)
         PatternRewriteWalker(LowerXor2Pattern(), apply_recursively=True).rewrite_module(op)
         PatternRewriteWalker(LowerHalfAdderPattern(), apply_recursively=True).rewrite_module(op)
         PatternRewriteWalker(LowerFullAdderPattern(), apply_recursively=True).rewrite_module(op)

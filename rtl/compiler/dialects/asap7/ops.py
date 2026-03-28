@@ -74,6 +74,39 @@ class And2Op(IRDLOperation):
 
 
 @irdl_op_definition
+class Ao21Op(IRDLOperation):
+    name = "asap7.ao21"
+
+    instance_name = prop_def(StringAttr)
+    output = prop_def(StringAttr)
+    and_lhs = prop_def(StringAttr)
+    and_rhs = prop_def(StringAttr)
+    or_rhs = prop_def(StringAttr)
+    owner = prop_def(StringAttr)
+
+    def __init__(
+        self,
+        *,
+        instance_name: str,
+        output: str,
+        and_lhs: str,
+        and_rhs: str,
+        or_rhs: str,
+        owner: str,
+    ) -> None:
+        super().__init__(
+            properties={
+                "instance_name": StringAttr(instance_name),
+                "output": StringAttr(output),
+                "and_lhs": StringAttr(and_lhs),
+                "and_rhs": StringAttr(and_rhs),
+                "or_rhs": StringAttr(or_rhs),
+                "owner": StringAttr(owner),
+            }
+        )
+
+
+@irdl_op_definition
 class FullAdderOp(IRDLOperation):
     name = "asap7.full_adder"
 
@@ -147,4 +180,4 @@ class HalfAdderOp(IRDLOperation):
             }
         )
 
-ASAP7_DIALECT = Dialect("asap7", [Xor2Op, Or2Op, And2Op, FullAdderOp, HalfAdderOp], [])
+ASAP7_DIALECT = Dialect("asap7", [Xor2Op, Or2Op, And2Op, Ao21Op, FullAdderOp, HalfAdderOp], [])

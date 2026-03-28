@@ -323,6 +323,24 @@
         "area": 204.0,
         "cell_count": 1891
       }
+    },
+    {
+      "iteration": 17,
+      "metadata": {
+        "source": "agent",
+        "dut": "mac16x16p32.v",
+        "top_module": "mac16x16p32",
+        "comment": "Observed the high-bit prefix generate chain as the remaining bottleneck after the Kogge-Stone transition; replaced two-level generate/carry logic with reusable AO21-based lowering across the prefix tree and full-adder carry path; this improved timing and reduced area by shifting the worst path away from the former D31 prefix tail."
+      },
+      "result_summary": {
+        "correctness": "pass",
+        "timing_status": "pass",
+        "wns": 0.2348,
+        "tns": 0.0,
+        "critical_delay": 0.6652,
+        "area": 178.0,
+        "cell_count": 1538
+      }
     }
   ]
 }

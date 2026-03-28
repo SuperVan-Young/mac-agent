@@ -98,6 +98,39 @@ class Xor2Op(IRDLOperation):
 
 
 @irdl_op_definition
+class Ao21Op(IRDLOperation):
+    name = "logic.ao21"
+
+    instance_name = prop_def(StringAttr)
+    region_kind = prop_def(StringAttr)
+    output = prop_def(StringAttr)
+    and_lhs = prop_def(StringAttr)
+    and_rhs = prop_def(StringAttr)
+    or_rhs = prop_def(StringAttr)
+
+    def __init__(
+        self,
+        *,
+        instance_name: str,
+        region_kind: str,
+        output: str,
+        and_lhs: str,
+        and_rhs: str,
+        or_rhs: str,
+    ) -> None:
+        super().__init__(
+            properties={
+                "instance_name": StringAttr(instance_name),
+                "region_kind": StringAttr(region_kind),
+                "output": StringAttr(output),
+                "and_lhs": StringAttr(and_lhs),
+                "and_rhs": StringAttr(and_rhs),
+                "or_rhs": StringAttr(or_rhs),
+            }
+        )
+
+
+@irdl_op_definition
 class FullAdderOp(IRDLOperation):
     name = "logic.full_adder"
 
@@ -165,5 +198,4 @@ class HalfAdderOp(IRDLOperation):
             }
         )
 
-
-LOGIC_DIALECT = Dialect("logic", [And2Op, Or2Op, Xor2Op, FullAdderOp, HalfAdderOp], [])
+LOGIC_DIALECT = Dialect("logic", [And2Op, Or2Op, Xor2Op, Ao21Op, FullAdderOp, HalfAdderOp], [])

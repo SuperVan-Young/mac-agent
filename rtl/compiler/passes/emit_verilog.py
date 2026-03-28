@@ -6,7 +6,7 @@ import re
 
 from xdsl.dialects.builtin import ArrayAttr, ModuleOp, StringAttr
 
-from ..dialects.asap7 import And2Op, FullAdderOp, HalfAdderOp, Or2Op, Xor2Op
+from ..dialects.asap7 import And2Op, Ao21Op, FullAdderOp, HalfAdderOp, Or2Op, Xor2Op
 from ..signals import SignalDecl, decode_signal_decls
 
 
@@ -75,6 +75,16 @@ def emit_verilog(module: ModuleOp) -> str:
             _collect_wire_base(op.rhs.data, declared_ports, wire_widths)
             instances.append(
                 f"  OR2x2_ASAP7_75t_R {op.instance_name.data}({op.output.data}, {op.lhs.data}, {op.rhs.data});"
+            )
+            continue
+        if isinstance(op, Ao21Op):
+            _collect_wire_base(op.output.data, declared_ports, wire_widths)
+            _collect_wire_base(op.and_lhs.data, declared_ports, wire_widths)
+            _collect_wire_base(op.and_rhs.data, declared_ports, wire_widths)
+            _collect_wire_base(op.or_rhs.data, declared_ports, wire_widths)
+            instances.append(
+                "  AO21x2_ASAP7_75t_R "
+                f"{op.instance_name.data}({op.output.data}, {op.and_lhs.data}, {op.and_rhs.data}, {op.or_rhs.data});"
             )
             continue
         if isinstance(op, Xor2Op):

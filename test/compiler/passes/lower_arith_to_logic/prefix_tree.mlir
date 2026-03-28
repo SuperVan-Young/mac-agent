@@ -2,7 +2,7 @@
 // CHECK: "logic.xor2"() {instance_name = "pt_b0_xor_p"
 // CHECK: "logic.and2"() {instance_name = "pt_b0_and_g"
 // CHECK: "logic.and2"() {instance_name = "pt_s0_and_p_1"
-// CHECK: "logic.or2"() {instance_name = "pt_s0_or_g_1"
+// CHECK: "logic.ao21"() {instance_name = "pt_s0_ao21_g_1"
 // CHECK: "logic.xor2"() {instance_name = "pt_b3_xor_sum"
 // CHECK-NOT: "logic.full_adder"() {instance_name = "pt_b
 // CHECK-NOT: "arith.prefix_tree"()

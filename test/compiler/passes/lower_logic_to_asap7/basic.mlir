@@ -3,7 +3,7 @@
 // CHECK: "asap7.xor2"() {instance_name = "ct_demo_ha_xor"
 // CHECK: "asap7.and2"() {instance_name = "ct_demo_ha_and"
 // CHECK: "asap7.xor2"() {instance_name = "ct_demo_fa_xor_ab"
-// CHECK: "asap7.or2"() {instance_name = "ct_demo_fa_or_carry"
+// CHECK: "asap7.ao21"() {instance_name = "ct_demo_fa_ao21_carry"
 // CHECK-NOT: "logic.full_adder"()
 // CHECK-NOT: "logic.half_adder"()
 "builtin.module"() ({
