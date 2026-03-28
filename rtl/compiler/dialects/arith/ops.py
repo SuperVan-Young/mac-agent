@@ -25,6 +25,28 @@ def decode_columns(attr: ArrayAttr[StringAttr]) -> dict[int, list[str]]:
 
 
 @irdl_op_definition
+class MultiplierOp(IRDLOperation):
+    """High-level multiplier op that can be decomposed structurally later."""
+
+    name = "arith.multiplier"
+
+    implementation = prop_def(StringAttr)
+
+    def __init__(self, *, implementation: str = "array") -> None:
+        super().__init__(properties={"implementation": StringAttr(implementation)})
+
+
+@irdl_op_definition
+class PartialProductGeneratorOp(IRDLOperation):
+    name = "arith.partial_product_generator"
+
+    implementation = prop_def(StringAttr)
+
+    def __init__(self, *, implementation: str = "and_grid") -> None:
+        super().__init__(properties={"implementation": StringAttr(implementation)})
+
+
+@irdl_op_definition
 class CompressorTreeOp(IRDLOperation):
     """High-level compressor-tree op before binding to a concrete cell graph."""
 
@@ -50,4 +72,18 @@ class CompressorTreeOp(IRDLOperation):
         )
 
 
-ARITH_DIALECT = Dialect("arith", [CompressorTreeOp], [])
+@irdl_op_definition
+class PrefixTreeOp(IRDLOperation):
+    name = "arith.prefix_tree"
+
+    implementation = prop_def(StringAttr)
+
+    def __init__(self, *, implementation: str = "kogge_stone") -> None:
+        super().__init__(properties={"implementation": StringAttr(implementation)})
+
+
+ARITH_DIALECT = Dialect(
+    "arith",
+    [MultiplierOp, PartialProductGeneratorOp, CompressorTreeOp, PrefixTreeOp],
+    [],
+)

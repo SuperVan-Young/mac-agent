@@ -1,42 +1,28 @@
-"""Lower an ASAP7-only module to structural Verilog."""
+"""Emit structural Verilog from the current root module."""
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-
 from xdsl.dialects.builtin import ModuleOp
 
-from ..dialects.asap7 import And2Op, Xor2Op
+from ..dialects.asap7 import FullAdderOp, HalfAdderOp
 
 
-@dataclass(frozen=True)
-class LoweringResult:
-    ir_text: str
-    verilog_text: str
-
-
-def lower_module_to_verilog(module: ModuleOp, top_name: str = "mac16x16p32") -> str:
+def emit_verilog(module: ModuleOp, top_name: str = "mac16x16p32") -> str:
     wires: set[str] = set()
     referenced_signals: set[str] = set()
     instances: list[str] = []
     for op in module.ops:
-        if isinstance(op, Xor2Op):
-            out = op.output.data
-            lhs = op.lhs.data
-            rhs = op.rhs.data
-            wires.add(out)
-            referenced_signals.update((lhs, rhs))
+        if isinstance(op, FullAdderOp):
+            wires.update((op.sum_out.data, op.carry_out.data))
+            referenced_signals.update((op.lhs.data, op.rhs.data, op.cin.data))
             instances.append(
-                f"  XOR2x2_ASAP7_75t_R {op.instance_name.data}({out}, {lhs}, {rhs});"
+                f"  FAx1_ASAP7_75t_R {op.instance_name.data}({op.sum_out.data}, {op.carry_out.data}, {op.lhs.data}, {op.rhs.data}, {op.cin.data});"
             )
-        elif isinstance(op, And2Op):
-            out = op.output.data
-            lhs = op.lhs.data
-            rhs = op.rhs.data
-            wires.add(out)
-            referenced_signals.update((lhs, rhs))
+        elif isinstance(op, HalfAdderOp):
+            wires.update((op.sum_out.data, op.carry_out.data))
+            referenced_signals.update((op.lhs.data, op.rhs.data))
             instances.append(
-                f"  AND2x2_ASAP7_75t_R {op.instance_name.data}({out}, {lhs}, {rhs});"
+                f"  HAxp5_ASAP7_75t_R {op.instance_name.data}({op.sum_out.data}, {op.carry_out.data}, {op.lhs.data}, {op.rhs.data});"
             )
 
     declared_ports = {"A", "B", "C", "D"}

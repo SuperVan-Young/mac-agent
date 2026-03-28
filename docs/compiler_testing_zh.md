@@ -23,8 +23,8 @@ test/compiler/
 子路径尽量对应 `rtl/compiler/` 的代码路径。例如：
 
 ```text
-rtl/compiler/passes/lower_arith_ct_to_comp.py
-test/compiler/passes/lower_arith_ct_to_comp/basic.mlir
+rtl/compiler/passes/lower_arith_to_logic.py
+test/compiler/passes/lower_arith_to_logic/basic.mlir
 ```
 
 当前入口文件：
@@ -43,9 +43,9 @@ test/compiler/passes/lower_arith_ct_to_comp/basic.mlir
 示例：
 
 ```mlir
-// RUN: compiler-opt --pass lower-arith-ct-to-comp
-// CHECK: "comp.ha"() {instance_name = "ct_c0_ha"
-// CHECK: "comp.fa"() {instance_name = "ct_c1_fa"
+// RUN: compiler-opt --pass lower-arith-to-logic
+// CHECK: "logic.half_adder"() {instance_name = "ct_c0_ha"
+// CHECK: "logic.full_adder"() {instance_name = "ct_c1_fa"
 // CHECK-NOT: "arith.compressor_tree"()
 "builtin.module"() ({
   "arith.compressor_tree"() {reduction_type = "dadda", columns = ["c0=A[0],B[0]", "c1=pp_0_1,pp_1_0,C[0]"], owner = "arith.compressor_tree"} : () -> ()
@@ -62,25 +62,26 @@ test/compiler/passes/lower_arith_ct_to_comp/basic.mlir
 
 支持的 pass：
 
-- `lower-arith-ct-to-comp`
-- `lower-comp-to-asap7`
+- `lower-arith-to-logic`
+- `lower-logic-to-asap7`
+- `emit-verilog`
 
-支持的输出：
+支持的输出方式：
 
-- `--emit ir`
-  - 默认值
-  - 检查 pass 之后的 IR 文本
+- 默认输出 IR 文本
 - `--emit verilog`
-  - 把最终 ASAP7-only IR lower 为结构 Verilog 后检查文本
+  - 直接要求输出 Verilog
+- `--pass emit-verilog`
+  - 用 pass 风格触发 Verilog 导出
 
 示例：
 
 ```mlir
-// RUN: compiler-opt --pass lower-arith-ct-to-comp --pass lower-comp-to-asap7
+// RUN: compiler-opt --pass lower-arith-to-logic --pass lower-logic-to-asap7
 ```
 
 ```mlir
-// RUN: compiler-opt --pass lower-arith-ct-to-comp --pass lower-comp-to-asap7 --emit verilog
+// RUN: compiler-opt --pass lower-arith-to-logic --pass lower-logic-to-asap7 --pass emit-verilog
 ```
 
 ## 5. 支持的 CHECK 语法
@@ -110,7 +111,7 @@ conda run -p /tmp/mac-agent-openroad-env pytest -q test/compiler
 ### 6.2 运行单个测试文件
 
 ```bash
-conda run -p /tmp/mac-agent-openroad-env pytest -q test/compiler/passes/lower_arith_ct_to_comp/basic.mlir
+conda run -p /tmp/mac-agent-openroad-env pytest -q test/compiler/passes/lower_arith_to_logic/basic.mlir
 ```
 
 ### 6.3 按测试名筛选
@@ -118,13 +119,13 @@ conda run -p /tmp/mac-agent-openroad-env pytest -q test/compiler/passes/lower_ar
 使用 `pytest -k`：
 
 ```bash
-conda run -p /tmp/mac-agent-openroad-env pytest -q test/compiler -k lower_arith_ct_to_comp
+conda run -p /tmp/mac-agent-openroad-env pytest -q test/compiler -k lower_arith_to_logic
 ```
 
 例如：
 
 ```bash
-conda run -p /tmp/mac-agent-openroad-env pytest -q test/compiler -k comp_to_asap7
+conda run -p /tmp/mac-agent-openroad-env pytest -q test/compiler -k logic_to_asap7
 ```
 
 ```bash
@@ -134,7 +135,8 @@ conda run -p /tmp/mac-agent-openroad-env pytest -q test/compiler -k demo_verilog
 `-k` 匹配的是 pytest case 名。当前 case 名基本就是相对路径，例如：
 
 - `passes/lower_arith_ct_to_comp/basic.mlir`
-- `passes/lower_comp_to_asap7/basic.mlir`
+- `passes/lower_logic_to_asap7/basic.mlir`
+- `passes/lower_arith_to_logic/basic.mlir`
 - `pipeline/demo_verilog.mlir`
 
 ## 7. 如何新增测试
@@ -148,10 +150,10 @@ conda run -p /tmp/mac-agent-openroad-env pytest -q test/compiler -k demo_verilog
 5. 写 `CHECK`
 6. 填入输入 IR
 
-例如要给 `rtl/compiler/passes/lower_comp_to_asap7.py` 新增测试，可以放在：
+例如要给 `rtl/compiler/passes/lower_logic_to_asap7.py` 新增测试，可以放在：
 
 ```text
-test/compiler/passes/lower_comp_to_asap7/
+test/compiler/passes/lower_logic_to_asap7/
 ```
 
 ## 8. 当前实现原理

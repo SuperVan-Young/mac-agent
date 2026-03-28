@@ -1,7 +1,8 @@
-"""Minimal pipeline for arith.compressor_tree -> comp -> asap7."""
+"""Minimal pipeline for arith.compressor_tree -> logic -> asap7."""
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from io import StringIO
 
 from xdsl.context import Context
@@ -10,10 +11,15 @@ from xdsl.printer import Printer
 
 from .dialects.arith import ARITH_DIALECT, CompressorTreeOp
 from .dialects.asap7 import ASAP7_DIALECT
-from .dialects.comp import COMP_DIALECT
-from .lowering.verilog import LoweringResult, lower_module_to_verilog
-from .passes.lower_arith_ct_to_comp import LowerArithCompressorTreeToCompPass
-from .passes.lower_comp_to_asap7 import LowerCompToAsap7Pass
+from .dialects.logic import LOGIC_DIALECT
+from .passes.emit_verilog import emit_verilog
+from .passes.lower_arith_to_logic import LowerArithToLogicPass
+from .passes.lower_logic_to_asap7 import LowerLogicToAsap7Pass
+
+@dataclass(frozen=True)
+class PipelineResult:
+    ir_text: str
+    verilog_text: str
 
 
 def build_demo_compressor_tree_module(reduction_type: str = "dadda") -> ModuleOp:
@@ -36,7 +42,7 @@ def build_context() -> Context:
     ctx = Context()
     ctx.load_dialect(Builtin)
     ctx.load_dialect(ARITH_DIALECT)
-    ctx.load_dialect(COMP_DIALECT)
+    ctx.load_dialect(LOGIC_DIALECT)
     ctx.load_dialect(ASAP7_DIALECT)
     return ctx
 
@@ -48,12 +54,12 @@ def render_module(module: ModuleOp) -> str:
     return stream.getvalue()
 
 
-def lower_demo_compressor_tree(reduction_type: str = "dadda") -> LoweringResult:
+def lower_demo_compressor_tree(reduction_type: str = "dadda") -> PipelineResult:
     ctx = build_context()
     module = build_demo_compressor_tree_module(reduction_type=reduction_type)
-    LowerArithCompressorTreeToCompPass().apply(ctx, module)
-    LowerCompToAsap7Pass().apply(ctx, module)
-    return LoweringResult(
+    LowerArithToLogicPass().apply(ctx, module)
+    LowerLogicToAsap7Pass().apply(ctx, module)
+    return PipelineResult(
         ir_text=render_module(module),
-        verilog_text=lower_module_to_verilog(module),
+        verilog_text=emit_verilog(module),
     )

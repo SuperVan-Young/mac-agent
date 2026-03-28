@@ -8,9 +8,9 @@ import shlex
 from xdsl.parser import Parser
 from xdsl.printer import Printer
 
-from rtl.compiler.lowering.verilog import lower_module_to_verilog
-from rtl.compiler.passes.lower_arith_ct_to_comp import LowerArithCompressorTreeToCompPass
-from rtl.compiler.passes.lower_comp_to_asap7 import LowerCompToAsap7Pass
+from rtl.compiler.passes.emit_verilog import emit_verilog
+from rtl.compiler.passes.lower_arith_to_logic import LowerArithToLogicPass
+from rtl.compiler.passes.lower_logic_to_asap7 import LowerLogicToAsap7Pass
 from rtl.compiler.pipeline import build_context
 
 
@@ -89,24 +89,27 @@ def run_mlir_test(path: Path) -> None:
 def execute_run_spec(run_spec: RunSpec, source: str) -> str:
     ctx = build_context()
     module = Parser(ctx, source, name="<test>").parse_module()
+    emit = run_spec.emit
 
     for pass_name in run_spec.passes:
-        if pass_name == "lower-arith-ct-to-comp":
-            LowerArithCompressorTreeToCompPass().apply(ctx, module)
-        elif pass_name == "lower-comp-to-asap7":
-            LowerCompToAsap7Pass().apply(ctx, module)
+        if pass_name == "lower-arith-to-logic":
+            LowerArithToLogicPass().apply(ctx, module)
+        elif pass_name == "lower-logic-to-asap7":
+            LowerLogicToAsap7Pass().apply(ctx, module)
+        elif pass_name == "emit-verilog":
+            emit = "verilog"
         else:
             raise AssertionError(f"Unsupported pass {pass_name!r}")
 
-    if run_spec.emit == "ir":
+    if emit == "ir":
         stream = StringIO()
         Printer(stream=stream, print_generic_format=True, print_properties_as_attributes=True).print_op(
             module
         )
         return stream.getvalue()
-    if run_spec.emit == "verilog":
-        return lower_module_to_verilog(module)
-    raise AssertionError(f"Unsupported emit target {run_spec.emit!r}")
+    if emit == "verilog":
+        return emit_verilog(module)
+    raise AssertionError(f"Unsupported emit target {emit!r}")
 
 
 def check_output(path: Path, output: str, checks: list[CheckSpec]) -> None:
