@@ -19,6 +19,7 @@ COMPRESS_XOR2_CELL = "XOR2xp5_ASAP7_75t_R"
 COMPRESS_FAST_XOR2_CELL = "XOR2x2_ASAP7_75t_R"
 OUTPUT_XOR2_CELL = "XOR2xp5_ASAP7_75t_R"
 AO21_CELL = "AO21x1_ASAP7_75t_R"
+AO21_FAST_CELL = "AO21x2_ASAP7_75t_R"
 AOI21_CELL = "AOI21xp5_ASAP7_75t_R"
 FINAL_CARRY_STRONG_AOI21_CELL = "AOI21x1_ASAP7_75t_R"
 MAJ_CELL = "MAJx2_ASAP7_75t_R"
@@ -29,6 +30,8 @@ COMPRESS_FAST_LO = 14
 COMPRESS_FAST_HI = 20
 MIXED_HIGH_LO = 18
 MIXED_HIGH_HI = 31
+HOT_SUFFIX_CANDIDATE_LO = 22
+HOT_SUFFIX_TOP_K = 4
 DEFAULT_INPUT_SLEW = 10.0
 DEFAULT_OUTPUT_LOAD = 4.0
 LIBERTY_PATHS = (
@@ -129,7 +132,7 @@ class CompressorStage:
 @dataclass(frozen=True)
 class CompressorTreeIR:
     stages: tuple[CompressorStage, ...]
-    outputs: tuple[tuple[str, ...], ...]
+    outputs: tuple[tuple[PhasedBitRef, ...], ...]
 
 
 class LibertyTimingModel:
@@ -283,6 +286,7 @@ class NetlistBuilder:
             self.zero: TimingState(arrival=0.0, slew=DEFAULT_INPUT_SLEW)
         }
         self.compressor_tree_ir = CompressorTreeIR(stages=(), outputs=())
+        self.hot_suffix_lo = WIDTH
 
     def new_wire(self, prefix: str) -> str:
         self.counter += 1
@@ -388,18 +392,18 @@ class NetlistBuilder:
         )
         return out
 
-    def logic_ao21(self, a1: str, a2: str, b: str) -> str:
+    def logic_ao21(self, a1: str, a2: str, b: str, cell: str = AO21_CELL) -> str:
         if a1 == self.zero or a2 == self.zero:
             return b
         if b == self.zero:
             return self.logic_and(a1, a2)
         out = self.new_wire("ao21")
         self.emit(f"wire {out};")
-        self.emit_pos_inst(AO21_CELL, out, a1, a2, b)
+        self.emit_pos_inst(cell, out, a1, a2, b)
         self.assign_timing(
             out,
             self.timing_model.propagate(
-                AO21_CELL,
+                cell,
                 "Y",
                 {
                     "A1": self.pin_state(a1),
@@ -514,12 +518,36 @@ class NetlistBuilder:
         )
 
     def prefix_xor_cell(self, bit_idx: int) -> str:
+        if bit_idx >= self.hot_suffix_lo:
+            return XOR2_CELL
         if PREFIX_FAST_LO <= bit_idx <= PREFIX_FAST_HI:
             return XOR2_CELL
         return COMPRESS_XOR2_CELL
 
     def prefix_xnor_cell(self, bit_idx: int) -> str:
+        if bit_idx >= self.hot_suffix_lo:
+            return XNOR2_FAST_CELL
         if PREFIX_FAST_LO <= bit_idx <= PREFIX_FAST_HI:
+            return XNOR2_FAST_CELL
+        return XNOR2_CELL
+
+    def prefix_ao21_cell(self, bit_idx: int) -> str:
+        if bit_idx >= self.hot_suffix_lo:
+            return AO21_FAST_CELL
+        return AO21_CELL
+
+    def final_carry_aoi21_cell(self, bit_idx: int) -> str:
+        if bit_idx >= self.hot_suffix_lo - 1:
+            return FINAL_CARRY_STRONG_AOI21_CELL
+        return AOI21_CELL
+
+    def output_xor_cell(self, bit_idx: int) -> str:
+        if bit_idx >= self.hot_suffix_lo:
+            return XOR2_CELL
+        return OUTPUT_XOR2_CELL
+
+    def output_xnor_cell(self, bit_idx: int) -> str:
+        if bit_idx >= self.hot_suffix_lo:
             return XNOR2_FAST_CELL
         return XNOR2_CELL
 
@@ -656,6 +684,37 @@ class NetlistBuilder:
         )
         return cols
 
+    def select_hot_suffix(self, cols: list[list[PhasedBitRef]]) -> int:
+        op_counts = [0] * WIDTH
+        mixed_counts = [0] * WIDTH
+        for stage in self.compressor_tree_ir.stages:
+            for op in stage.operations:
+                if 0 <= op.column < WIDTH:
+                    op_counts[op.column] += 1
+                    if op.use_mixed:
+                        mixed_counts[op.column] += 1
+
+        candidates: list[tuple[float, int]] = []
+        for idx in range(HOT_SUFFIX_CANDIDATE_LO, WIDTH - 1):
+            arrival = max((bit[1] for bit in cols[idx]), default=0.0)
+            score = arrival + 8.0 * op_counts[idx] + 12.0 * mixed_counts[idx]
+            if len(self.compressor_tree_ir.outputs[idx]) >= 2:
+                score += 6.0
+            candidates.append((score, idx))
+        if not candidates:
+            return WIDTH
+
+        top_cols = sorted(candidates, reverse=True)[:HOT_SUFFIX_TOP_K]
+        return max(HOT_SUFFIX_CANDIDATE_LO, min(idx for _, idx in top_cols) - 1)
+
+    def rewrite_hot_suffix_rows(self, cols: list[list[PhasedBitRef]]) -> list[list[PhasedBitRef]]:
+        rewritten = [list(col) for col in cols]
+        self.compressor_tree_ir = CompressorTreeIR(
+            stages=self.compressor_tree_ir.stages,
+            outputs=tuple(tuple(col) for col in rewritten),
+        )
+        return rewritten
+
     def build(self) -> str:
         cols: list[list[PhasedBitRef]] = [[] for _ in range(WIDTH + 1)]
 
@@ -692,6 +751,8 @@ class NetlistBuilder:
             cols[bit].append((f"C[{bit}]", self.pin_state(f"C[{bit}]").arrival, False))
 
         cols = self.reduce_dadda(cols)
+        self.hot_suffix_lo = self.select_hot_suffix(cols)
+        cols = self.rewrite_hot_suffix_rows(cols)
 
         self.emit("")
         row_a_bits: list[PhasedBitRef] = []
@@ -712,11 +773,13 @@ class NetlistBuilder:
         top_sum_sig = self.zero
         top_sum_use_xor = False
         for idx in range(WIDTH - 1):
-            a_sig, _, a_inv = row_a_bits[idx]
-            b_sig, _, b_inv = row_b_bits[idx]
+            a_bit = row_a_bits[idx]
+            b_bit = row_b_bits[idx]
+            a_sig, _, a_inv = a_bit
+            b_sig, _, b_inv = b_bit
             if a_sig == self.zero or b_sig == self.zero:
-                a_sig, _, _ = self.materialize_positive(row_a_bits[idx])
-                b_sig, _, _ = self.materialize_positive(row_b_bits[idx])
+                a_sig, _, _ = self.materialize_positive(a_bit)
+                b_sig, _, _ = self.materialize_positive(b_bit)
                 p = self.logic_xor2(a_sig, b_sig, cell=self.prefix_xor_cell(idx))
                 g = self.logic_and(a_sig, b_sig)
             elif a_inv == b_inv:
@@ -728,25 +791,27 @@ class NetlistBuilder:
             else:
                 # Opposite-polarity survivors preserve parity via XNOR.
                 p = self.logic_xnor2(a_sig, b_sig, cell=self.prefix_xnor_cell(idx))
-                a_pos, _, _ = self.materialize_positive(row_a_bits[idx])
-                b_pos, _, _ = self.materialize_positive(row_b_bits[idx])
+                a_pos, _, _ = self.materialize_positive(a_bit)
+                b_pos, _, _ = self.materialize_positive(b_bit)
                 g = self.logic_and(a_pos, b_pos)
             bit_p.append(p)
             p_prev.append(p)
             g_prev.append(g)
 
-        a_sig, _, a_inv = row_a_bits[WIDTH - 1]
-        b_sig, _, b_inv = row_b_bits[WIDTH - 1]
+        a_bit = row_a_bits[WIDTH - 1]
+        b_bit = row_b_bits[WIDTH - 1]
+        a_sig, _, a_inv = a_bit
+        b_sig, _, b_inv = b_bit
         if a_sig == self.zero or b_sig == self.zero:
-            a_sig, _, _ = self.materialize_positive(row_a_bits[WIDTH - 1])
-            b_sig, _, _ = self.materialize_positive(row_b_bits[WIDTH - 1])
-            top_sum_sig = self.logic_xor2(a_sig, b_sig, cell=OUTPUT_XOR2_CELL)
+            a_sig, _, _ = self.materialize_positive(a_bit)
+            b_sig, _, _ = self.materialize_positive(b_bit)
+            top_sum_sig = self.logic_xor2(a_sig, b_sig, cell=self.output_xor_cell(WIDTH - 1))
         elif a_inv == b_inv:
-            top_sum_sig = self.logic_xor2(a_sig, b_sig, cell=OUTPUT_XOR2_CELL)
+            top_sum_sig = self.logic_xor2(a_sig, b_sig, cell=self.output_xor_cell(WIDTH - 1))
         else:
             # D[31] only needs the incoming carry from bit 30, so keep the
             # local parity complemented and consume it directly with XOR.
-            top_sum_sig = self.logic_xor2(a_sig, b_sig, cell=OUTPUT_XOR2_CELL)
+            top_sum_sig = self.logic_xor2(a_sig, b_sig, cell=self.output_xor_cell(WIDTH - 1))
             top_sum_use_xor = True
 
         for distance in (1, 2, 4, 8):
@@ -758,7 +823,12 @@ class NetlistBuilder:
                     g = g_prev[idx]
                 else:
                     p = self.logic_and(p_prev[idx], p_prev[idx - distance])
-                    g = self.logic_ao21(p_prev[idx], g_prev[idx - distance], g_prev[idx])
+                    g = self.logic_ao21(
+                        p_prev[idx],
+                        g_prev[idx - distance],
+                        g_prev[idx],
+                        cell=self.prefix_ao21_cell(idx),
+                    )
                 p_next.append(p)
                 g_next.append(g)
             p_prev = p_next
@@ -766,7 +836,7 @@ class NetlistBuilder:
 
         final_carry_bar = [self.zero] * WIDTH
         for idx in range(16, WIDTH - 1):
-            cell = FINAL_CARRY_STRONG_AOI21_CELL if idx == WIDTH - 2 else AOI21_CELL
+            cell = self.final_carry_aoi21_cell(idx)
             final_carry_bar[idx] = self.logic_aoi21(
                 p_prev[idx],
                 g_prev[idx - 16],
@@ -779,14 +849,30 @@ class NetlistBuilder:
             if idx == 0:
                 sum_wire = bit_p[idx]
             elif idx <= 16:
-                sum_wire = self.logic_xor2(g_prev[idx - 1], bit_p[idx], cell=OUTPUT_XOR2_CELL)
+                sum_wire = self.logic_xor2(
+                    g_prev[idx - 1],
+                    bit_p[idx],
+                    cell=self.output_xor_cell(idx),
+                )
             else:
-                sum_wire = self.logic_xnor2(final_carry_bar[idx - 1], bit_p[idx], cell=XNOR2_CELL)
+                sum_wire = self.logic_xnor2(
+                    final_carry_bar[idx - 1],
+                    bit_p[idx],
+                    cell=self.output_xnor_cell(idx),
+                )
             self.emit(f"assign D[{idx}] = {sum_wire};")
         if top_sum_use_xor:
-            sum_wire = self.logic_xor2(final_carry_bar[WIDTH - 2], top_sum_sig, cell=OUTPUT_XOR2_CELL)
+            sum_wire = self.logic_xor2(
+                final_carry_bar[WIDTH - 2],
+                top_sum_sig,
+                cell=self.output_xor_cell(WIDTH - 1),
+            )
         else:
-            sum_wire = self.logic_xnor2(final_carry_bar[WIDTH - 2], top_sum_sig, cell=XNOR2_CELL)
+            sum_wire = self.logic_xnor2(
+                final_carry_bar[WIDTH - 2],
+                top_sum_sig,
+                cell=self.output_xnor_cell(WIDTH - 1),
+            )
         self.emit(f"assign D[{WIDTH - 1}] = {sum_wire};")
 
         self.emit("endmodule")
