@@ -1,5 +1,5 @@
 """ASAP7 dialect entry points."""
 
-from .ops import Asap7CellOp, Asap7Graph
+from .ops import ASAP7_DIALECT, And2Op, Xor2Op
 
-__all__ = ["Asap7CellOp", "Asap7Graph"]
+__all__ = ["ASAP7_DIALECT", "And2Op", "Xor2Op"]

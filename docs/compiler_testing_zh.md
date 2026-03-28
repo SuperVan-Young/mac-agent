@@ -135,7 +135,7 @@ conda run -p /tmp/mac-agent-openroad-env pytest -q test/compiler -k demo_verilog
 
 - `passes/lower_arith_ct_to_comp/basic.mlir`
 - `passes/lower_comp_to_asap7/basic.mlir`
-- `xdsl_pipeline/demo_verilog.mlir`
+- `pipeline/demo_verilog.mlir`
 
 ## 7. 如何新增测试
 

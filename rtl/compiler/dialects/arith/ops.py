@@ -1,58 +1,53 @@
-"""Arithmetic dialect operations.
-
-This dialect is the high-level IR layer. It keeps arithmetic structure explicit
-and preserves major module boundaries such as:
-- partial-product generation
-- compressor tree
-- carry-propagate adder
-"""
+"""xDSL definitions for the arith dialect."""
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-
-from ...compat import XdslRequirement
-
-
-@dataclass
-class PartialProductGeneratorOp:
-    name: str = "arith.partial_product_generator"
-    a_width: int = 16
-    b_width: int = 16
-    output_columns: dict[int, list[str]] = field(default_factory=dict)
+from xdsl.dialects.builtin import ArrayAttr, StringAttr
+from xdsl.irdl import IRDLOperation, prop_def, irdl_op_definition
+from xdsl.ir import Dialect
 
 
-@dataclass
-class CompressorTreeOp:
-    name: str = "arith.compressor_tree"
-    reduction_type: str = "dadda"
-    comp_graph: object | None = None
-    asap7_graph: object | None = None
-    attributes: dict[str, object] = field(default_factory=dict)
+def _encode_columns(columns: dict[int, list[str]]) -> ArrayAttr[StringAttr]:
+    encoded = []
+    for column, signals in sorted(columns.items()):
+        encoded.append(StringAttr(f"c{column}=" + ",".join(signals)))
+    return ArrayAttr(encoded)
 
 
-@dataclass
-class AdderOp:
-    name: str = "arith.adder"
-    implementation: str = "cpa"
-    attributes: dict[str, object] = field(default_factory=dict)
+def decode_columns(attr: ArrayAttr[StringAttr]) -> dict[int, list[str]]:
+    columns: dict[int, list[str]] = {}
+    for item in attr:
+        raw = item.data
+        column_tag, _, payload = raw.partition("=")
+        column = int(column_tag[1:])
+        columns[column] = [signal for signal in payload.split(",") if signal]
+    return columns
 
 
-@dataclass
-class MacOp:
-    name: str
-    ppg: PartialProductGeneratorOp
-    compressor_tree: CompressorTreeOp
-    adder: AdderOp
-    attributes: dict[str, object] = field(default_factory=dict)
+@irdl_op_definition
+class CompressorTreeOp(IRDLOperation):
+    """High-level compressor-tree op before binding to a concrete cell graph."""
+
+    name = "arith.compressor_tree"
+
+    reduction_type = prop_def(StringAttr)
+    columns = prop_def(ArrayAttr[StringAttr])
+    owner = prop_def(StringAttr)
+
+    def __init__(
+        self,
+        *,
+        reduction_type: str,
+        columns: dict[int, list[str]],
+        owner: str = "arith.compressor_tree",
+    ) -> None:
+        super().__init__(
+            properties={
+                "reduction_type": StringAttr(reduction_type),
+                "columns": _encode_columns(columns),
+                "owner": StringAttr(owner),
+            }
+        )
 
 
-@dataclass
-class ArithModule:
-    top_name: str
-    mac: MacOp
-    attributes: dict[str, object] = field(default_factory=dict)
-
-
-def require_xdsl() -> None:
-    XdslRequirement("arith dialect definitions").ensure()
+ARITH_DIALECT = Dialect("arith", [CompressorTreeOp], [])

@@ -1,11 +1,5 @@
 """Arithmetic dialect entry points."""
 
-from .ops import AdderOp, ArithModule, CompressorTreeOp, MacOp, PartialProductGeneratorOp
+from .ops import ARITH_DIALECT, CompressorTreeOp, decode_columns
 
-__all__ = [
-    "AdderOp",
-    "ArithModule",
-    "CompressorTreeOp",
-    "MacOp",
-    "PartialProductGeneratorOp",
-]
+__all__ = ["ARITH_DIALECT", "CompressorTreeOp", "decode_columns"]

@@ -14,8 +14,8 @@ from xdsl.pattern_rewriter import (
     op_type_rewrite_pattern,
 )
 
-from ..dialects.asap7.xdsl import And2Op, Xor2Op
-from ..dialects.comp.xdsl import FullAdderOp, HalfAdderOp
+from ..dialects.asap7 import And2Op, Xor2Op
+from ..dialects.comp import FullAdderOp, HalfAdderOp
 
 
 class LowerHalfAdderPattern(RewritePattern):

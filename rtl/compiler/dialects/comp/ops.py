@@ -1,61 +1,79 @@
-"""Compressor-tree dialect operations.
-
-This dialect models the internal reduction subgraph of a compressor tree without
-forcing the outer arithmetic IR to flatten.
-"""
+"""xDSL definitions for the comp dialect."""
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-
-from ...compat import XdslRequirement
-
-
-@dataclass(frozen=True, kw_only=True)
-class CompNode:
-    op_name: str
-    node_id: str
-    column: int
-    stage: int
-    inputs: tuple[str, ...]
-    outputs: tuple[str, ...]
-    attributes: dict[str, object] = field(default_factory=dict)
+from xdsl.dialects.builtin import StringAttr
+from xdsl.irdl import IRDLOperation, prop_def, irdl_op_definition
+from xdsl.ir import Dialect
 
 
-@dataclass(frozen=True, kw_only=True)
-class FullAdderOp(CompNode):
-    op_name: str = "comp.fa"
+@irdl_op_definition
+class FullAdderOp(IRDLOperation):
+    name = "comp.fa"
+
+    instance_name = prop_def(StringAttr)
+    sum_out = prop_def(StringAttr)
+    carry_out = prop_def(StringAttr)
+    lhs = prop_def(StringAttr)
+    rhs = prop_def(StringAttr)
+    cin = prop_def(StringAttr)
+    owner = prop_def(StringAttr)
+
+    def __init__(
+        self,
+        *,
+        instance_name: str,
+        sum_out: str,
+        carry_out: str,
+        lhs: str,
+        rhs: str,
+        cin: str,
+        owner: str,
+    ) -> None:
+        super().__init__(
+            properties={
+                "instance_name": StringAttr(instance_name),
+                "sum_out": StringAttr(sum_out),
+                "carry_out": StringAttr(carry_out),
+                "lhs": StringAttr(lhs),
+                "rhs": StringAttr(rhs),
+                "cin": StringAttr(cin),
+                "owner": StringAttr(owner),
+            }
+        )
 
 
-@dataclass(frozen=True, kw_only=True)
-class HalfAdderOp(CompNode):
-    op_name: str = "comp.ha"
+@irdl_op_definition
+class HalfAdderOp(IRDLOperation):
+    name = "comp.ha"
+
+    instance_name = prop_def(StringAttr)
+    sum_out = prop_def(StringAttr)
+    carry_out = prop_def(StringAttr)
+    lhs = prop_def(StringAttr)
+    rhs = prop_def(StringAttr)
+    owner = prop_def(StringAttr)
+
+    def __init__(
+        self,
+        *,
+        instance_name: str,
+        sum_out: str,
+        carry_out: str,
+        lhs: str,
+        rhs: str,
+        owner: str,
+    ) -> None:
+        super().__init__(
+            properties={
+                "instance_name": StringAttr(instance_name),
+                "sum_out": StringAttr(sum_out),
+                "carry_out": StringAttr(carry_out),
+                "lhs": StringAttr(lhs),
+                "rhs": StringAttr(rhs),
+                "owner": StringAttr(owner),
+            }
+        )
 
 
-@dataclass(frozen=True, kw_only=True)
-class Compressor42Op(CompNode):
-    op_name: str = "comp.compressor_4_2"
-
-
-@dataclass
-class ColumnBundleOp:
-    name: str = "comp.column_bundle"
-    columns: dict[int, list[str]] = field(default_factory=dict)
-
-
-@dataclass
-class CompStage:
-    stage: int
-    nodes: list[CompNode] = field(default_factory=list)
-
-
-@dataclass
-class CompGraph:
-    reduction_type: str
-    column_bundle: ColumnBundleOp
-    stages: list[CompStage] = field(default_factory=list)
-    attributes: dict[str, object] = field(default_factory=dict)
-
-
-def require_xdsl() -> None:
-    XdslRequirement("comp dialect definitions").ensure()
+COMP_DIALECT = Dialect("comp", [FullAdderOp, HalfAdderOp], [])

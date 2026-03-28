@@ -1,22 +1,17 @@
 """Dialect entry points for the MAC compiler."""
 
-from .arith import AdderOp, ArithModule, CompressorTreeOp, MacOp, PartialProductGeneratorOp
-from .asap7 import Asap7CellOp, Asap7Graph
-from .comp import ColumnBundleOp, CompGraph, CompNode, CompStage, Compressor42Op, FullAdderOp, HalfAdderOp
+from .arith import ARITH_DIALECT, CompressorTreeOp, decode_columns
+from .asap7 import ASAP7_DIALECT, And2Op, Xor2Op
+from .comp import COMP_DIALECT, FullAdderOp, HalfAdderOp
 
 __all__ = [
-    "AdderOp",
-    "ArithModule",
-    "Asap7CellOp",
-    "Asap7Graph",
-    "ColumnBundleOp",
-    "CompGraph",
-    "CompNode",
-    "CompStage",
-    "Compressor42Op",
+    "ARITH_DIALECT",
+    "ASAP7_DIALECT",
+    "COMP_DIALECT",
     "CompressorTreeOp",
+    "And2Op",
     "FullAdderOp",
     "HalfAdderOp",
-    "MacOp",
-    "PartialProductGeneratorOp",
+    "Xor2Op",
+    "decode_columns",
 ]

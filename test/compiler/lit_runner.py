@@ -8,10 +8,10 @@ import shlex
 from xdsl.parser import Parser
 from xdsl.printer import Printer
 
-from rtl.compiler.lowering.xdsl_verilog import lower_xdsl_asap7_module_to_verilog
+from rtl.compiler.lowering.verilog import lower_module_to_verilog
 from rtl.compiler.passes.lower_arith_ct_to_comp import LowerArithCompressorTreeToCompPass
 from rtl.compiler.passes.lower_comp_to_asap7 import LowerCompToAsap7Pass
-from rtl.compiler.xdsl_pipeline import build_xdsl_context
+from rtl.compiler.pipeline import build_context
 
 
 @dataclass(frozen=True)
@@ -87,7 +87,7 @@ def run_mlir_test(path: Path) -> None:
 
 
 def execute_run_spec(run_spec: RunSpec, source: str) -> str:
-    ctx = build_xdsl_context()
+    ctx = build_context()
     module = Parser(ctx, source, name="<test>").parse_module()
 
     for pass_name in run_spec.passes:
@@ -105,7 +105,7 @@ def execute_run_spec(run_spec: RunSpec, source: str) -> str:
         )
         return stream.getvalue()
     if run_spec.emit == "verilog":
-        return lower_xdsl_asap7_module_to_verilog(module)
+        return lower_module_to_verilog(module)
     raise AssertionError(f"Unsupported emit target {run_spec.emit!r}")
 
 

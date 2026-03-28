@@ -14,8 +14,8 @@ from xdsl.pattern_rewriter import (
     op_type_rewrite_pattern,
 )
 
-from ..dialects.arith.xdsl import CompressorTreeOp, decode_columns
-from ..dialects.comp.xdsl import FullAdderOp, HalfAdderOp
+from ..dialects.arith import CompressorTreeOp, decode_columns
+from ..dialects.comp import FullAdderOp, HalfAdderOp
 
 
 class LowerCompressorTreeToCompPattern(RewritePattern):

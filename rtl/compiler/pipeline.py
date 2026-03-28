@@ -1,52 +1,59 @@
-"""Pass protocol and pipeline driver."""
+"""Minimal pipeline for arith.compressor_tree -> comp -> asap7."""
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import Any, Protocol
+from io import StringIO
 
-from .context import CompilerContext
+from xdsl.context import Context
+from xdsl.dialects.builtin import Builtin, ModuleOp
+from xdsl.printer import Printer
 
-
-class CompilerPass(Protocol):
-    name: str
-
-    def run(self, module: Any, context: CompilerContext) -> Any:
-        """Apply the pass and return the new module object."""
-
-
-@dataclass
-class PassManager:
-    passes: list[CompilerPass] = field(default_factory=list)
-
-    def add_pass(self, compiler_pass: CompilerPass) -> None:
-        self.passes.append(compiler_pass)
-
-    def run(self, module: Any, context: CompilerContext) -> Any:
-        current = module
-        for compiler_pass in self.passes:
-            context.note(f"running pass: {compiler_pass.name}")
-            current = compiler_pass.run(current, context)
-        return current
+from .dialects.arith import ARITH_DIALECT, CompressorTreeOp
+from .dialects.asap7 import ASAP7_DIALECT
+from .dialects.comp import COMP_DIALECT
+from .lowering.verilog import LoweringResult, lower_module_to_verilog
+from .passes.lower_arith_ct_to_comp import LowerArithCompressorTreeToCompPass
+from .passes.lower_comp_to_asap7 import LowerCompToAsap7Pass
 
 
-def build_default_pipeline() -> PassManager:
-    """Return the intended first-pass pipeline ordering."""
-
-    from .passes.annotate_timing import AnnotateTimingPass
-    from .passes.bind_asap7 import BindAsap7Pass
-    from .passes.build_ppg import BuildPartialProductGraphPass
-    from .passes.legalize_nodes import LegalizeCompressorNodesPass
-    from .passes.materialize_ct import MaterializeCompressorTreePass
-    from .passes.rewrite_dadda import RewriteCtToDaddaPass
-
-    return PassManager(
-        passes=[
-            BuildPartialProductGraphPass(),
-            MaterializeCompressorTreePass(),
-            RewriteCtToDaddaPass(),
-            LegalizeCompressorNodesPass(),
-            BindAsap7Pass(),
-            AnnotateTimingPass(),
+def build_demo_compressor_tree_module(reduction_type: str = "dadda") -> ModuleOp:
+    columns = {
+        0: ["A[0]", "B[0]"],
+        1: ["pp_0_1", "pp_1_0", "C[0]"],
+        2: ["pp_0_2", "pp_1_1"],
+    }
+    return ModuleOp(
+        [
+            CompressorTreeOp(
+                reduction_type=reduction_type,
+                columns=columns,
+            )
         ]
+    )
+
+
+def build_context() -> Context:
+    ctx = Context()
+    ctx.load_dialect(Builtin)
+    ctx.load_dialect(ARITH_DIALECT)
+    ctx.load_dialect(COMP_DIALECT)
+    ctx.load_dialect(ASAP7_DIALECT)
+    return ctx
+
+
+def render_module(module: ModuleOp) -> str:
+    stream = StringIO()
+    printer = Printer(stream=stream, print_generic_format=True, print_properties_as_attributes=True)
+    printer.print_op(module)
+    return stream.getvalue()
+
+
+def lower_demo_compressor_tree(reduction_type: str = "dadda") -> LoweringResult:
+    ctx = build_context()
+    module = build_demo_compressor_tree_module(reduction_type=reduction_type)
+    LowerArithCompressorTreeToCompPass().apply(ctx, module)
+    LowerCompToAsap7Pass().apply(ctx, module)
+    return LoweringResult(
+        ir_text=render_module(module),
+        verilog_text=lower_module_to_verilog(module),
     )

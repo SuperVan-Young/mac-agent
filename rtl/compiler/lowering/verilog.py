@@ -1,40 +1,52 @@
-"""Lower high-level compiler IR to structural Verilog."""
+"""Lower an ASAP7-only module to structural Verilog."""
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
-from ..dialects.arith import ArithModule
+from xdsl.dialects.builtin import ModuleOp
+
+from ..dialects.asap7 import And2Op, Xor2Op
 
 
-@dataclass
+@dataclass(frozen=True)
 class LoweringResult:
-    text: str
-    top_name: str
-    artifacts: dict[str, object] = field(default_factory=dict)
+    ir_text: str
+    verilog_text: str
 
 
-def lower_to_structural_verilog(module: ArithModule) -> LoweringResult:
-    """Lower the arith -> comp -> asap7 path into a legal flat Verilog top.
+def lower_module_to_verilog(module: ModuleOp, top_name: str = "mac16x16p32") -> str:
+    wires: set[str] = set()
+    referenced_signals: set[str] = set()
+    instances: list[str] = []
+    for op in module.ops:
+        if isinstance(op, Xor2Op):
+            out = op.output.data
+            lhs = op.lhs.data
+            rhs = op.rhs.data
+            wires.add(out)
+            referenced_signals.update((lhs, rhs))
+            instances.append(
+                f"  XOR2x2_ASAP7_75t_R {op.instance_name.data}({out}, {lhs}, {rhs});"
+            )
+        elif isinstance(op, And2Op):
+            out = op.output.data
+            lhs = op.lhs.data
+            rhs = op.rhs.data
+            wires.add(out)
+            referenced_signals.update((lhs, rhs))
+            instances.append(
+                f"  AND2x2_ASAP7_75t_R {op.instance_name.data}({out}, {lhs}, {rhs});"
+            )
 
-    The hierarchy is preserved logically via grouped naming and lowering artifacts.
-    The emitted Verilog remains flat at the top level because the current candidate
-    legality checker only allows top-level instantiations from the standard-cell or
-    primitive allowlist.
-    """
-
-    top_name = module.top_name
-    cell_lines: list[str] = []
-    wire_names: set[str] = set()
-    asap7_graph = module.mac.compressor_tree.asap7_graph
-    if asap7_graph is not None:
-        for cell in asap7_graph.cells[:8]:
-            wire_names.update(cell.outputs)
-            if len(cell.inputs) == 1:
-                args = ", ".join((cell.outputs[0], cell.inputs[0]))
-            else:
-                args = ", ".join((cell.outputs[0], cell.inputs[0], cell.inputs[1]))
-            cell_lines.append(f"  {cell.cell_name} {cell.instance_name}({args});")
+    declared_ports = {"A", "B", "C", "D"}
+    for signal in referenced_signals:
+        if "[" in signal:
+            base = signal.split("[", 1)[0]
+            if base not in declared_ports:
+                wires.add(base)
+        elif signal not in declared_ports:
+            wires.add(signal)
 
     lines = [
         f"module {top_name}(A, B, C, D);",
@@ -43,35 +55,12 @@ def lower_to_structural_verilog(module: ArithModule) -> LoweringResult:
         "  input [31:0] C;",
         "  output [31:0] D;",
     ]
-    for wire_name in sorted(wire_names):
+    for wire_name in sorted(wires):
         lines.append(f"  wire {wire_name};")
-    lines.extend(
-        [
-            "",
-            "  // arith.partial_product_generator",
-            "  AND2x2_ASAP7_75t_R ppg_seed(pp_seed, A[0], B[0]);",
-            "",
-            "  // arith.compressor_tree -> comp subgraph -> asap7 subgraph",
-        ]
-    )
-    lines.extend(cell_lines or ["  XOR2x2_ASAP7_75t_R ct_seed(ct_sum_c0_0, A[0], B[0]);"])
-    lines.extend(
-        [
-            "",
-            "  // arith.adder placeholder",
-            "  assign D = C;",
-            "endmodule",
-            "",
-        ]
-    )
-    return LoweringResult(
-        text="\n".join(lines),
-        top_name=top_name,
-        artifacts={
-            "arith_module": module,
-            "preserved_subgraphs": {
-                "arith.compressor_tree": module.mac.compressor_tree.comp_graph,
-                "asap7": asap7_graph,
-            },
-        },
-    )
+    lines.append("")
+    lines.extend(instances)
+    lines.append("")
+    lines.append("  assign D = C;")
+    lines.append("endmodule")
+    lines.append("")
+    return "\n".join(lines)

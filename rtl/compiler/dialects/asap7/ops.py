@@ -1,33 +1,54 @@
-"""ASAP7 cell-bound operations.
-
-This dialect keeps the lowered standard-cell subgraph grouped under the original
-arithmetic/compressor owner instead of flattening the whole compiler IR.
-"""
+"""xDSL definitions for the asap7 dialect."""
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-
-from ...compat import XdslRequirement
-
-
-@dataclass(frozen=True)
-class Asap7CellOp:
-    op_name: str
-    instance_name: str
-    cell_name: str
-    outputs: tuple[str, ...]
-    inputs: tuple[str, ...]
-    owner: str
-    attributes: dict[str, object] = field(default_factory=dict)
+from xdsl.dialects.builtin import StringAttr
+from xdsl.irdl import IRDLOperation, prop_def, irdl_op_definition
+from xdsl.ir import Dialect
 
 
-@dataclass
-class Asap7Graph:
-    owner: str
-    cells: list[Asap7CellOp] = field(default_factory=list)
-    attributes: dict[str, object] = field(default_factory=dict)
+@irdl_op_definition
+class Xor2Op(IRDLOperation):
+    name = "asap7.xor2"
+
+    instance_name = prop_def(StringAttr)
+    output = prop_def(StringAttr)
+    lhs = prop_def(StringAttr)
+    rhs = prop_def(StringAttr)
+    owner = prop_def(StringAttr)
+
+    def __init__(self, *, instance_name: str, output: str, lhs: str, rhs: str, owner: str) -> None:
+        super().__init__(
+            properties={
+                "instance_name": StringAttr(instance_name),
+                "output": StringAttr(output),
+                "lhs": StringAttr(lhs),
+                "rhs": StringAttr(rhs),
+                "owner": StringAttr(owner),
+            }
+        )
 
 
-def require_xdsl() -> None:
-    XdslRequirement("asap7 dialect definitions").ensure()
+@irdl_op_definition
+class And2Op(IRDLOperation):
+    name = "asap7.and2"
+
+    instance_name = prop_def(StringAttr)
+    output = prop_def(StringAttr)
+    lhs = prop_def(StringAttr)
+    rhs = prop_def(StringAttr)
+    owner = prop_def(StringAttr)
+
+    def __init__(self, *, instance_name: str, output: str, lhs: str, rhs: str, owner: str) -> None:
+        super().__init__(
+            properties={
+                "instance_name": StringAttr(instance_name),
+                "output": StringAttr(output),
+                "lhs": StringAttr(lhs),
+                "rhs": StringAttr(rhs),
+                "owner": StringAttr(owner),
+            }
+        )
+
+
+ASAP7_DIALECT = Dialect("asap7", [Xor2Op, And2Op], [])
