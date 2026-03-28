@@ -115,7 +115,7 @@ def _emit_module(
             _collect_wire_base(op.lhs.data, declared_ports, wire_widths)
             _collect_wire_base(op.rhs.data, declared_ports, wire_widths)
             instances.append(
-                f"  AND2x2_ASAP7_75t_R {op.instance_name.data}({op.output.data}, {op.lhs.data}, {op.rhs.data});"
+                f"  {op.cell.data} {op.instance_name.data}({op.output.data}, {op.lhs.data}, {op.rhs.data});"
             )
             continue
         if isinstance(op, Or2Op):
@@ -123,7 +123,7 @@ def _emit_module(
             _collect_wire_base(op.lhs.data, declared_ports, wire_widths)
             _collect_wire_base(op.rhs.data, declared_ports, wire_widths)
             instances.append(
-                f"  OR2x2_ASAP7_75t_R {op.instance_name.data}({op.output.data}, {op.lhs.data}, {op.rhs.data});"
+                f"  {op.cell.data} {op.instance_name.data}({op.output.data}, {op.lhs.data}, {op.rhs.data});"
             )
             continue
         if isinstance(op, Ao21Op):
@@ -132,7 +132,7 @@ def _emit_module(
             _collect_wire_base(op.and_rhs.data, declared_ports, wire_widths)
             _collect_wire_base(op.or_rhs.data, declared_ports, wire_widths)
             instances.append(
-                "  AO21x2_ASAP7_75t_R "
+                f"  {op.cell.data} "
                 f"{op.instance_name.data}({op.output.data}, {op.and_lhs.data}, {op.and_rhs.data}, {op.or_rhs.data});"
             )
             continue
@@ -141,7 +141,7 @@ def _emit_module(
             _collect_wire_base(op.lhs.data, declared_ports, wire_widths)
             _collect_wire_base(op.rhs.data, declared_ports, wire_widths)
             instances.append(
-                f"  XOR2x2_ASAP7_75t_R {op.instance_name.data}({op.output.data}, {op.lhs.data}, {op.rhs.data});"
+                f"  {op.cell.data} {op.instance_name.data}({op.output.data}, {op.lhs.data}, {op.rhs.data});"
             )
             continue
         if isinstance(op, FullAdderOp):

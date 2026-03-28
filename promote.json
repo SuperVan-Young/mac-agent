@@ -377,6 +377,24 @@
         "area": 178.0,
         "cell_count": 1538
       }
+    },
+    {
+      "iteration": 20,
+      "metadata": {
+        "source": "agent",
+        "dut": "mac16x16p32.v",
+        "top_module": "mac16x16p32",
+        "comment": "Observed that the new hierarchical logic regions had no downstream optimization using logic.region_kind; added a reusable region-scoped ASAP7 cell sizing pass that reclaims area in non-critical compressor_tree and prefix_tree regions while preserving the current timing window; this validated the new region structure and reduced area without timing or cell-count regression."
+      },
+      "result_summary": {
+        "correctness": "pass",
+        "timing_status": "pass",
+        "wns": 0.2721,
+        "tns": 0.0,
+        "critical_delay": 0.6279,
+        "area": 169.0,
+        "cell_count": 1538
+      }
     }
   ]
 }

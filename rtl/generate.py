@@ -19,6 +19,7 @@ DEFAULT_PASSES = (
     "lower-arith-to-logic",
     "verify-post-arith-to-logic",
     "lower-logic-to-asap7",
+    "region-scoped-cell-sizing",
     "verify-post-logic-to-physical",
 )
 

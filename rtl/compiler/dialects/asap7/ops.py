@@ -12,15 +12,26 @@ class Xor2Op(IRDLOperation):
     name = "asap7.xor2"
 
     instance_name = prop_def(StringAttr)
+    cell = prop_def(StringAttr)
     output = prop_def(StringAttr)
     lhs = prop_def(StringAttr)
     rhs = prop_def(StringAttr)
     owner = prop_def(StringAttr)
 
-    def __init__(self, *, instance_name: str, output: str, lhs: str, rhs: str, owner: str) -> None:
+    def __init__(
+        self,
+        *,
+        instance_name: str,
+        output: str,
+        lhs: str,
+        rhs: str,
+        owner: str,
+        cell: str = "XOR2x2_ASAP7_75t_R",
+    ) -> None:
         super().__init__(
             properties={
                 "instance_name": StringAttr(instance_name),
+                "cell": StringAttr(cell),
                 "output": StringAttr(output),
                 "lhs": StringAttr(lhs),
                 "rhs": StringAttr(rhs),
@@ -34,15 +45,26 @@ class Or2Op(IRDLOperation):
     name = "asap7.or2"
 
     instance_name = prop_def(StringAttr)
+    cell = prop_def(StringAttr)
     output = prop_def(StringAttr)
     lhs = prop_def(StringAttr)
     rhs = prop_def(StringAttr)
     owner = prop_def(StringAttr)
 
-    def __init__(self, *, instance_name: str, output: str, lhs: str, rhs: str, owner: str) -> None:
+    def __init__(
+        self,
+        *,
+        instance_name: str,
+        output: str,
+        lhs: str,
+        rhs: str,
+        owner: str,
+        cell: str = "OR2x2_ASAP7_75t_R",
+    ) -> None:
         super().__init__(
             properties={
                 "instance_name": StringAttr(instance_name),
+                "cell": StringAttr(cell),
                 "output": StringAttr(output),
                 "lhs": StringAttr(lhs),
                 "rhs": StringAttr(rhs),
@@ -56,15 +78,26 @@ class And2Op(IRDLOperation):
     name = "asap7.and2"
 
     instance_name = prop_def(StringAttr)
+    cell = prop_def(StringAttr)
     output = prop_def(StringAttr)
     lhs = prop_def(StringAttr)
     rhs = prop_def(StringAttr)
     owner = prop_def(StringAttr)
 
-    def __init__(self, *, instance_name: str, output: str, lhs: str, rhs: str, owner: str) -> None:
+    def __init__(
+        self,
+        *,
+        instance_name: str,
+        output: str,
+        lhs: str,
+        rhs: str,
+        owner: str,
+        cell: str = "AND2x2_ASAP7_75t_R",
+    ) -> None:
         super().__init__(
             properties={
                 "instance_name": StringAttr(instance_name),
+                "cell": StringAttr(cell),
                 "output": StringAttr(output),
                 "lhs": StringAttr(lhs),
                 "rhs": StringAttr(rhs),
@@ -78,6 +111,7 @@ class Ao21Op(IRDLOperation):
     name = "asap7.ao21"
 
     instance_name = prop_def(StringAttr)
+    cell = prop_def(StringAttr)
     output = prop_def(StringAttr)
     and_lhs = prop_def(StringAttr)
     and_rhs = prop_def(StringAttr)
@@ -93,10 +127,12 @@ class Ao21Op(IRDLOperation):
         and_rhs: str,
         or_rhs: str,
         owner: str,
+        cell: str = "AO21x2_ASAP7_75t_R",
     ) -> None:
         super().__init__(
             properties={
                 "instance_name": StringAttr(instance_name),
+                "cell": StringAttr(cell),
                 "output": StringAttr(output),
                 "and_lhs": StringAttr(and_lhs),
                 "and_rhs": StringAttr(and_rhs),

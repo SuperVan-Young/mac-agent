@@ -19,6 +19,7 @@ from .passes.emit_verilog import emit_verilog
 from .passes.lower_arith_to_logic import LowerArithToLogicPass
 from .passes.lower_logic_to_asap7 import LowerLogicToAsap7Pass
 from .passes.lower_multiplier_to_arith_parts import LowerMultiplierToArithPartsPass
+from .passes.region_scoped_cell_sizing import RegionScopedCellSizingPass
 from .passes.verify_post_arith_to_logic import PostArithToLogicVerificationPass
 from .passes.verify_post_logic_to_physical import PostLogicToPhysicalVerificationPass
 
@@ -33,6 +34,7 @@ PASS_REGISTRY = {
     "lower-arith-to-logic": LowerArithToLogicPass,
     "verify-post-arith-to-logic": PostArithToLogicVerificationPass,
     "lower-logic-to-asap7": LowerLogicToAsap7Pass,
+    "region-scoped-cell-sizing": RegionScopedCellSizingPass,
     "verify-post-logic-to-physical": PostLogicToPhysicalVerificationPass,
 }
 
