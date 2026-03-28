@@ -3,13 +3,16 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-import re
 
 from xdsl.context import Context
-from xdsl.dialects.builtin import ModuleOp, StringAttr
+from xdsl.dialects.builtin import ArrayAttr, ModuleOp, StringAttr
 from xdsl.dialects.func import FuncOp
 from xdsl.passes import ModulePass
 
+from ..analysis import (
+    FUNC_TIMING_KEEP_FAST_INSTANCES_ATTR,
+    FUNC_TIMING_RECLAIM_INSTANCES_ATTR,
+)
 from ..dialects.asap7 import Ao21Op, Xor2Op
 
 
@@ -17,50 +20,65 @@ _LOGIC_REGION_KIND_ATTR = "logic.region_kind"
 _PREFIX_REGION_KIND = "arith.prefix_tree"
 _COMPRESSOR_REGION_KIND = "arith.compressor_tree"
 
-_PREFIX_KEEP_MIN = 17
-_PREFIX_KEEP_MAX = 21
-_COMPRESSOR_KEEP_MIN = 13
-_COMPRESSOR_KEEP_MAX = 22
-
-_PREFIX_XOR_RE = re.compile(r"^pt_b(?P<bit>\d+)_xor_(?:p|sum)$")
-_PREFIX_AO21_RE = re.compile(r"^pt_s\d+_ao21_g_(?P<bit>\d+)$")
-_COMPRESSOR_COLUMN_RE = re.compile(r"_c(?P<column>\d+)_")
-
 
 def _set_cell(op: Xor2Op | Ao21Op, cell: str) -> None:
     op.properties["cell"] = StringAttr(cell)
 
 
-def _size_prefix_region(func_op: FuncOp) -> None:
+def _read_keep_fast_instances(func_op: FuncOp) -> set[str]:
+    attr = func_op.attributes.get(FUNC_TIMING_KEEP_FAST_INSTANCES_ATTR)
+    if not isinstance(attr, ArrayAttr):
+        return set()
+    return {
+        item.data
+        for item in attr
+        if isinstance(item, StringAttr)
+    }
+
+
+def _read_reclaim_instances(func_op: FuncOp) -> set[str]:
+    attr = func_op.attributes.get(FUNC_TIMING_RECLAIM_INSTANCES_ATTR)
+    if not isinstance(attr, ArrayAttr):
+        return set()
+    return {
+        item.data
+        for item in attr
+        if isinstance(item, StringAttr)
+    }
+
+
+def _size_prefix_region(
+    func_op: FuncOp,
+    keep_fast_instances: set[str],
+    reclaim_instances: set[str],
+) -> None:
     for op in func_op.body.block.ops:
         if isinstance(op, Xor2Op):
-            match = _PREFIX_XOR_RE.match(op.instance_name.data)
-            if match is None:
+            if op.instance_name.data in keep_fast_instances:
                 continue
-            bit = int(match.group("bit"))
-            if _PREFIX_KEEP_MIN <= bit <= _PREFIX_KEEP_MAX:
+            if reclaim_instances and op.instance_name.data not in reclaim_instances:
                 continue
             _set_cell(op, "XOR2xp5_ASAP7_75t_R")
             continue
         if isinstance(op, Ao21Op):
-            match = _PREFIX_AO21_RE.match(op.instance_name.data)
-            if match is None:
+            if op.instance_name.data in keep_fast_instances:
                 continue
-            bit = int(match.group("bit"))
-            if _PREFIX_KEEP_MIN <= bit <= _PREFIX_KEEP_MAX:
+            if reclaim_instances and op.instance_name.data not in reclaim_instances:
                 continue
             _set_cell(op, "AO21x1_ASAP7_75t_R")
 
 
-def _size_compressor_region(func_op: FuncOp) -> None:
+def _size_compressor_region(
+    func_op: FuncOp,
+    keep_fast_instances: set[str],
+    reclaim_instances: set[str],
+) -> None:
     for op in func_op.body.block.ops:
         if not isinstance(op, Xor2Op):
             continue
-        match = _COMPRESSOR_COLUMN_RE.search(op.instance_name.data)
-        if match is None:
+        if op.instance_name.data in keep_fast_instances:
             continue
-        column = int(match.group("column"))
-        if _COMPRESSOR_KEEP_MIN <= column <= _COMPRESSOR_KEEP_MAX:
+        if reclaim_instances and op.instance_name.data not in reclaim_instances:
             continue
         _set_cell(op, "XOR2xp5_ASAP7_75t_R")
 
@@ -74,11 +92,13 @@ class RegionScopedCellSizingPass(ModulePass):
         for inner in op.ops:
             if not isinstance(inner, FuncOp):
                 continue
+            keep_fast_instances = _read_keep_fast_instances(inner)
+            reclaim_instances = _read_reclaim_instances(inner)
             region_kind_attr = inner.attributes.get(_LOGIC_REGION_KIND_ATTR)
             if not isinstance(region_kind_attr, StringAttr):
                 continue
             if region_kind_attr.data == _PREFIX_REGION_KIND:
-                _size_prefix_region(inner)
+                _size_prefix_region(inner, keep_fast_instances, reclaim_instances)
                 continue
             if region_kind_attr.data == _COMPRESSOR_REGION_KIND:
-                _size_compressor_region(inner)
+                _size_compressor_region(inner, keep_fast_instances, reclaim_instances)

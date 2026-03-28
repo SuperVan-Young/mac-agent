@@ -14,6 +14,7 @@ B_WIDTH=16
 ACC_WIDTH=32
 PIPELINE_CYCLES=1
 EXTRA_SRCS=()
+SANITIZED_LIB_DIR=""
 
 usage() {
     cat <<EOF
@@ -146,8 +147,22 @@ if [[ "${PARALLEL_JOBS}" -lt 1 ]]; then
 fi
 
 if [[ -d "${ROOT_DIR}/tech/asap7/verilog" ]]; then
+    SANITIZED_LIB_DIR="${OUT_DIR}/sanitized_stdcell"
+    mkdir -p "${SANITIZED_LIB_DIR}"
     while IFS= read -r stdcell_src; do
-        EXTRA_SRCS+=("${stdcell_src}")
+        sanitized_src="${SANITIZED_LIB_DIR}/$(basename "${stdcell_src}")"
+        python3 - "${stdcell_src}" "${sanitized_src}" <<'PY'
+import re
+import sys
+from pathlib import Path
+
+src = Path(sys.argv[1])
+dst = Path(sys.argv[2])
+text = src.read_text(encoding="utf-8", errors="ignore")
+text = re.sub(r"(?is)\bspecify\b.*?\bendspecify\b", "", text)
+dst.write_text(text, encoding="utf-8")
+PY
+        EXTRA_SRCS+=("${sanitized_src}")
     done < <(find "${ROOT_DIR}/tech/asap7/verilog" -type f -name '*.v' | sort)
 fi
 

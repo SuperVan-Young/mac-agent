@@ -9,6 +9,7 @@ from xdsl.parser import Parser
 from xdsl.printer import Printer
 
 from rtl.compiler.passes.emit_verilog import emit_verilog
+from rtl.compiler.passes.annotate_func_port_criticality import AnnotateFuncPortCriticalityPass
 from rtl.compiler.passes.lower_arith_to_logic import LowerArithToLogicPass
 from rtl.compiler.passes.lower_logic_to_asap7 import LowerLogicToAsap7Pass
 from rtl.compiler.passes.lower_multiplier_to_arith_parts import LowerMultiplierToArithPartsPass
@@ -104,6 +105,8 @@ def execute_run_spec(run_spec: RunSpec, source: str) -> str:
             PostArithToLogicVerificationPass().apply(ctx, module)
         elif pass_name == "lower-logic-to-asap7":
             LowerLogicToAsap7Pass().apply(ctx, module)
+        elif pass_name == "annotate-func-port-criticality":
+            AnnotateFuncPortCriticalityPass().apply(ctx, module)
         elif pass_name == "region-scoped-cell-sizing":
             RegionScopedCellSizingPass().apply(ctx, module)
         elif pass_name == "verify-post-logic-to-physical":

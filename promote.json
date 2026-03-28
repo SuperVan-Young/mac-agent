@@ -395,6 +395,24 @@
         "area": 169.0,
         "cell_count": 1538
       }
+    },
+    {
+      "iteration": 21,
+      "metadata": {
+        "source": "agent",
+        "dut": "mac16x16p32.v",
+        "top_module": "mac16x16p32",
+        "comment": "Observed that region-scoped area reclaim still lacked explicit timing-derived instance guidance and that candidate simulation failed because Icarus could not compile ASAP7 specify blocks; added reusable func-level timing annotations for both keep-fast and reclaim instance sets, drove region-scoped cell sizing from those annotations, and sanitized stdcell models in the sim wrapper; this preserved correctness and timing pass, improved area from 169.0 to 164.0, and restored make sim at the cost of a small critical_delay regression from 0.6279 to 0.6347."
+      },
+      "result_summary": {
+        "correctness": "pass",
+        "timing_status": "pass",
+        "wns": 0.2653,
+        "tns": 0.0,
+        "critical_delay": 0.6347,
+        "area": 164.0,
+        "cell_count": 1538
+      }
     }
   ]
 }

@@ -15,6 +15,7 @@ from xdsl.printer import Printer
 from .dialects.arith import ARITH_DIALECT
 from .dialects.asap7 import ASAP7_DIALECT
 from .dialects.logic import LOGIC_DIALECT
+from .passes.annotate_func_port_criticality import AnnotateFuncPortCriticalityPass
 from .passes.emit_verilog import emit_verilog
 from .passes.lower_arith_to_logic import LowerArithToLogicPass
 from .passes.lower_logic_to_asap7 import LowerLogicToAsap7Pass
@@ -34,6 +35,7 @@ PASS_REGISTRY = {
     "lower-arith-to-logic": LowerArithToLogicPass,
     "verify-post-arith-to-logic": PostArithToLogicVerificationPass,
     "lower-logic-to-asap7": LowerLogicToAsap7Pass,
+    "annotate-func-port-criticality": AnnotateFuncPortCriticalityPass,
     "region-scoped-cell-sizing": RegionScopedCellSizingPass,
     "verify-post-logic-to-physical": PostLogicToPhysicalVerificationPass,
 }
