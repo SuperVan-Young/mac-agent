@@ -79,9 +79,24 @@ if ! command -v python3 >/dev/null 2>&1; then
     exit 127
 fi
 
+if command -v rg >/dev/null 2>&1; then
+    SEARCH_TOOL=(rg -q)
+else
+    SEARCH_TOOL=(grep -Eq)
+fi
+
 if [[ ! -f "${DUT_PATH}" ]]; then
     echo "ERROR: DUT file not found: ${DUT_PATH}" >&2
     exit 2
+fi
+
+ROOT_CANDIDATE="${ROOT_DIR}/mac16x16p32.v"
+RTL_CANDIDATE="${ROOT_DIR}/rtl/mac16x16p32.v"
+if [[ -f "${ROOT_CANDIDATE}" && -f "${RTL_CANDIDATE}" ]] && ! cmp -s "${ROOT_CANDIDATE}" "${RTL_CANDIDATE}"; then
+    echo "WARN: candidate RTL copies differ:" >&2
+    echo "WARN:   using DUT=${DUT_PATH}" >&2
+    echo "WARN:   repo root copy=${ROOT_CANDIDATE}" >&2
+    echo "WARN:   rtl/ copy=${RTL_CANDIDATE}" >&2
 fi
 
 for int_arg in RANDOM_COUNT SEED PARALLEL_JOBS A_WIDTH B_WIDTH ACC_WIDTH PIPELINE_CYCLES; do
@@ -126,10 +141,10 @@ if [[ "${PARALLEL_JOBS}" -lt 1 ]]; then
     exit 2
 fi
 
-if rg -q "_ASAP7_" "${DUT_PATH}"; then
+if [[ -d "${ROOT_DIR}/tech/asap7/verilog" ]]; then
     while IFS= read -r stdcell_src; do
         EXTRA_SRCS+=("${stdcell_src}")
-    done < <(find "${ROOT_DIR}/tech/asap7/verilog/stdcell" -maxdepth 1 -type f -name '*.v' | sort)
+    done < <(find "${ROOT_DIR}/tech/asap7/verilog" -type f -name '*.v' | sort)
 fi
 
 IVERILOG_DEFINES=(
@@ -156,7 +171,9 @@ run_one_seed() {
     local seed_dir="${OUT_DIR}/seed_${seed_value}"
     local seed_vec="${seed_dir}/vectors.txt"
     local seed_log="${seed_dir}/sim.log"
+    local seed_simv="${seed_dir}/simv.out"
     mkdir -p "${seed_dir}"
+    cp "${SIMV}" "${seed_simv}"
 
     python3 "${SIM_DIR}/vectors.py" \
         --out "${seed_vec}" \
@@ -167,7 +184,7 @@ run_one_seed() {
         --acc-width "${ACC_WIDTH}" > "${seed_dir}/vectors_gen.log"
 
     set +e
-    vvp "${SIMV}" \
+    vvp "${seed_simv}" \
         +VEC_FILE="${seed_vec}" \
         +DUT_NAME="$(basename "${DUT_PATH}")" \
         +PIPELINE_LATENCY="$((PIPELINE_CYCLES - 1))" > "${seed_log}" 2>&1
@@ -185,20 +202,22 @@ run_one_seed() {
 echo "Running simulation for ${#SEEDS[@]} seed(s) with max ${PARALLEL_JOBS} parallel job(s)..."
 running_jobs=0
 pids=()
+SIM_RC=0
 for seed_item in "${SEEDS[@]}"; do
     run_one_seed "${seed_item}" &
     pids+=("$!")
     running_jobs=$((running_jobs + 1))
     if [[ "${running_jobs}" -ge "${PARALLEL_JOBS}" ]]; then
         for pid in "${pids[@]}"; do
-            wait "${pid}" || true
+            if ! wait "${pid}"; then
+                SIM_RC=1
+            fi
         done
         pids=()
         running_jobs=0
     fi
 done
 
-SIM_RC=0
 for pid in "${pids[@]}"; do
     if ! wait "${pid}"; then
         SIM_RC=1
@@ -208,7 +227,7 @@ done
 for seed_item in "${SEEDS[@]}"; do
     if [[ ! -f "${OUT_DIR}/seed_${seed_item}/sim.log" ]]; then
         SIM_RC=1
-    elif ! rg -q 'SIMULATION_STATUS=PASS|RESULT: PASS' "${OUT_DIR}/seed_${seed_item}/sim.log"; then
+    elif ! "${SEARCH_TOOL[@]}" 'SIMULATION_STATUS=PASS|RESULT: PASS' "${OUT_DIR}/seed_${seed_item}/sim.log"; then
         SIM_RC=1
     fi
 done
