@@ -23,7 +23,7 @@ from ..dialects.arith import (
     decode_columns,
     decode_terms,
 )
-from ..dialects.logic import And2Op, FullAdderOp, HalfAdderOp
+from ..dialects.logic import And2Op, FullAdderOp, HalfAdderOp, Or2Op, Xor2Op
 from .lower_multiplier_to_arith_parts import _plan_compressor_tree
 
 
@@ -82,8 +82,7 @@ class LowerCompressorTreeToLogicPattern(RewritePattern):
 
 
 class LowerPrefixTreeToLogicPattern(RewritePattern):
-    @op_type_rewrite_pattern
-    def match_and_rewrite(self, op: PrefixTreeOp, rewriter: PatternRewriter) -> None:
+    def _lower_ripple(self, op: PrefixTreeOp) -> list[FullAdderOp]:
         lhs_row = decode_bit_map(op.lhs_row)
         rhs_row = decode_bit_map(op.rhs_row)
         max_bit = max(set(lhs_row) | set(rhs_row), default=-1)
@@ -102,6 +101,113 @@ class LowerPrefixTreeToLogicPattern(RewritePattern):
                     cin=cin,
                 )
             )
+        return new_ops
+
+    def _lower_kogge_stone(
+        self, op: PrefixTreeOp
+    ) -> list[And2Op | Or2Op | Xor2Op]:
+        lhs_row = decode_bit_map(op.lhs_row)
+        rhs_row = decode_bit_map(op.rhs_row)
+        max_bit = max(set(lhs_row) | set(rhs_row), default=-1)
+        if max_bit < 0:
+            return []
+
+        new_ops: list[And2Op | Or2Op | Xor2Op] = []
+        propagate: dict[int, str] = {}
+        current_generate: dict[int, str] = {}
+        current_propagate: dict[int, str] = {}
+
+        for bit in range(max_bit + 1):
+            lhs = lhs_row.get(bit, "1'b0")
+            rhs = rhs_row.get(bit, "1'b0")
+            propagate_wire = f"pt_p_{bit}"
+            generate_wire = f"pt_g_{bit}"
+            new_ops.append(
+                Xor2Op(
+                    instance_name=f"pt_b{bit}_xor_p",
+                    region_kind="prefix_tree",
+                    output=propagate_wire,
+                    lhs=lhs,
+                    rhs=rhs,
+                )
+            )
+            new_ops.append(
+                And2Op(
+                    instance_name=f"pt_b{bit}_and_g",
+                    region_kind="prefix_tree",
+                    output=generate_wire,
+                    lhs=lhs,
+                    rhs=rhs,
+                )
+            )
+            propagate[bit] = propagate_wire
+            current_propagate[bit] = propagate_wire
+            current_generate[bit] = generate_wire
+
+        span = 1
+        stage = 0
+        while span <= max_bit:
+            next_propagate = dict(current_propagate)
+            next_generate = dict(current_generate)
+            for bit in range(span, max_bit + 1):
+                merged_propagate = f"pt_s{stage}_p_{bit}"
+                merged_generate_and = f"pt_s{stage}_gand_{bit}"
+                merged_generate = f"pt_s{stage}_g_{bit}"
+                new_ops.append(
+                    And2Op(
+                        instance_name=f"pt_s{stage}_and_p_{bit}",
+                        region_kind="prefix_tree",
+                        output=merged_propagate,
+                        lhs=current_propagate[bit],
+                        rhs=current_propagate[bit - span],
+                    )
+                )
+                new_ops.append(
+                    And2Op(
+                        instance_name=f"pt_s{stage}_and_g_{bit}",
+                        region_kind="prefix_tree",
+                        output=merged_generate_and,
+                        lhs=current_propagate[bit],
+                        rhs=current_generate[bit - span],
+                    )
+                )
+                new_ops.append(
+                    Or2Op(
+                        instance_name=f"pt_s{stage}_or_g_{bit}",
+                        region_kind="prefix_tree",
+                        output=merged_generate,
+                        lhs=current_generate[bit],
+                        rhs=merged_generate_and,
+                    )
+                )
+                next_propagate[bit] = merged_propagate
+                next_generate[bit] = merged_generate
+            current_propagate = next_propagate
+            current_generate = next_generate
+            span <<= 1
+            stage += 1
+
+        for bit in range(max_bit + 1):
+            carry_in = "1'b0" if bit == 0 else current_generate[bit - 1]
+            new_ops.append(
+                Xor2Op(
+                    instance_name=f"pt_b{bit}_xor_sum",
+                    region_kind="prefix_tree",
+                    output=f"{op.output_name.data}[{bit}]",
+                    lhs=propagate[bit],
+                    rhs=carry_in,
+                )
+            )
+        return new_ops
+
+    @op_type_rewrite_pattern
+    def match_and_rewrite(self, op: PrefixTreeOp, rewriter: PatternRewriter) -> None:
+        if op.implementation.data == "ripple":
+            new_ops = self._lower_ripple(op)
+        elif op.implementation.data == "kogge_stone":
+            new_ops = self._lower_kogge_stone(op)
+        else:
+            raise AssertionError(f"Unsupported prefix tree implementation {op.implementation.data!r}")
         rewriter.replace_matched_op(new_ops, safe_erase=True)
 
 

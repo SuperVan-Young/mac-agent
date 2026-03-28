@@ -305,6 +305,24 @@
         "area": 143.0,
         "cell_count": 1246
       }
+    },
+    {
+      "iteration": 16,
+      "metadata": {
+        "source": "agent",
+        "dut": "mac16x16p32.v",
+        "top_module": "mac16x16p32",
+        "comment": "Observed the D31 high-bit final-adder carry chain as the bottleneck in the ripple-style prefix stage; replaced the final adder lowering with a reusable Kogge-Stone prefix network plus explicit logic/asap7 support; this changed the candidate from timing fail to timing pass with much lower critical delay at the cost of higher area."
+      },
+      "result_summary": {
+        "correctness": "pass",
+        "timing_status": "pass",
+        "wns": 0.1186,
+        "tns": 0.0,
+        "critical_delay": 0.7814,
+        "area": 204.0,
+        "cell_count": 1891
+      }
     }
   ]
 }

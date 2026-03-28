@@ -15,17 +15,55 @@ from xdsl.pattern_rewriter import (
 )
 
 from ..dialects.asap7 import And2Op as Asap7And2Op, Or2Op as Asap7Or2Op, Xor2Op as Asap7Xor2Op
-from ..dialects.logic import And2Op, FullAdderOp, HalfAdderOp
+from ..dialects.logic import And2Op, FullAdderOp, HalfAdderOp, Or2Op, Xor2Op
 
 
 class LowerAnd2Pattern(RewritePattern):
     @op_type_rewrite_pattern
     def match_and_rewrite(self, op: And2Op, rewriter: PatternRewriter) -> None:
-        if op.region_kind.data != "partial_product_generator":
+        if op.region_kind.data not in {"partial_product_generator", "prefix_tree"}:
             return
         rewriter.replace_matched_op(
             [
                 Asap7And2Op(
+                    instance_name=op.instance_name.data,
+                    output=op.output.data,
+                    lhs=op.lhs.data,
+                    rhs=op.rhs.data,
+                    owner=op.region_kind.data,
+                )
+            ],
+            safe_erase=True,
+        )
+
+
+class LowerOr2Pattern(RewritePattern):
+    @op_type_rewrite_pattern
+    def match_and_rewrite(self, op: Or2Op, rewriter: PatternRewriter) -> None:
+        if op.region_kind.data != "prefix_tree":
+            return
+        rewriter.replace_matched_op(
+            [
+                Asap7Or2Op(
+                    instance_name=op.instance_name.data,
+                    output=op.output.data,
+                    lhs=op.lhs.data,
+                    rhs=op.rhs.data,
+                    owner=op.region_kind.data,
+                )
+            ],
+            safe_erase=True,
+        )
+
+
+class LowerXor2Pattern(RewritePattern):
+    @op_type_rewrite_pattern
+    def match_and_rewrite(self, op: Xor2Op, rewriter: PatternRewriter) -> None:
+        if op.region_kind.data != "prefix_tree":
+            return
+        rewriter.replace_matched_op(
+            [
+                Asap7Xor2Op(
                     instance_name=op.instance_name.data,
                     output=op.output.data,
                     lhs=op.lhs.data,
@@ -120,5 +158,7 @@ class LowerLogicToAsap7Pass(ModulePass):
     def apply(self, ctx: Context, op: ModuleOp) -> None:
         del ctx
         PatternRewriteWalker(LowerAnd2Pattern(), apply_recursively=True).rewrite_module(op)
+        PatternRewriteWalker(LowerOr2Pattern(), apply_recursively=True).rewrite_module(op)
+        PatternRewriteWalker(LowerXor2Pattern(), apply_recursively=True).rewrite_module(op)
         PatternRewriteWalker(LowerHalfAdderPattern(), apply_recursively=True).rewrite_module(op)
         PatternRewriteWalker(LowerFullAdderPattern(), apply_recursively=True).rewrite_module(op)

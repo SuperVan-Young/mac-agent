@@ -137,7 +137,7 @@ class LowerMultiplierToArithPartsPattern(RewritePattern):
                     owner="arith.compressor_tree",
                 ),
                 PrefixTreeOp(
-                    implementation="ripple",
+                    implementation="kogge_stone",
                     lhs_row=lhs_row,
                     rhs_row=rhs_row,
                     output_name=output_port.name,

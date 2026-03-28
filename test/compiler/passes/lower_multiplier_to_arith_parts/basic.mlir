@@ -4,6 +4,7 @@
 // CHECK: "arith.compressor_tree"()
 // CHECK: reduction_type = "dadda"
 // CHECK: "arith.prefix_tree"()
+// CHECK: implementation = "kogge_stone"
 // CHECK: output_name = "D"
 // CHECK-NOT: "arith.multiplier"()
 "builtin.module"() ({
