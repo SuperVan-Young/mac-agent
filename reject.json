@@ -1,0 +1,22 @@
+{
+  "history": [
+    {
+      "iteration": 0,
+      "metadata": {
+        "source": "agent",
+        "dut": "mac16x16p32.v",
+        "top_module": "mac16x16p32",
+        "comment": "Observed the D30 high-bit prefix carry chain as the bottleneck; widened the high-bit AO21 speedup window in rtl/generate.py; this produced no timing gain and increased area from 143.0 to 144.0, so the round was rejected."
+      },
+      "result_summary": {
+        "correctness": "pass",
+        "timing_status": "pass",
+        "wns": 0.3358,
+        "tns": 0.0,
+        "critical_delay": 0.5642,
+        "area": 144.0,
+        "cell_count": 1246
+      }
+    }
+  ]
+}
