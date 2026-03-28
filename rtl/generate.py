@@ -311,6 +311,8 @@ class NetlistBuilder:
         }
         self.compressor_tree_ir = CompressorTreeIR(stages=(), outputs=())
         self.hot_suffix_lo = WIDTH
+        self.predicted_hot_suffix_lo = WIDTH
+        self.column_joint_scores = [0.0] * WIDTH
         self.phase_cache: dict[tuple[str, bool], PhaseOptions] = {}
 
     def new_wire(self, prefix: str) -> str:
@@ -765,16 +767,25 @@ class NetlistBuilder:
         return XNOR2_CELL
 
     def compress_xor_cell(self, bit_idx: int) -> str:
+        hot_lo = max(HOT_SUFFIX_CANDIDATE_LO, self.predicted_hot_suffix_lo - 1)
+        if bit_idx >= hot_lo:
+            return COMPRESS_FAST_XOR2_CELL
         if COMPRESS_FAST_LO <= bit_idx <= COMPRESS_FAST_HI:
             return COMPRESS_FAST_XOR2_CELL
         return COMPRESS_XOR2_CELL
 
     def compress_xnor_cell(self, bit_idx: int) -> str:
+        hot_lo = max(HOT_SUFFIX_CANDIDATE_LO, self.predicted_hot_suffix_lo - 1)
+        if bit_idx >= hot_lo:
+            return XNOR2_FAST_CELL
         if COMPRESS_FAST_LO <= bit_idx <= COMPRESS_FAST_HI:
             return XNOR2_FAST_CELL
         return XNOR2_CELL
 
     def compress_first_xor_cell(self, bit_idx: int) -> str:
+        hot_lo = max(HOT_SUFFIX_CANDIDATE_LO, self.predicted_hot_suffix_lo - 1)
+        if bit_idx >= hot_lo:
+            return COMPRESS_FAST_XOR2_CELL
         if AGGRESSIVE_COMPRESS_LO <= bit_idx <= AGGRESSIVE_COMPRESS_HI:
             return COMPRESS_FAST_XOR2_CELL
         # Outside the timing-critical high-bit window keep the first XOR on
@@ -783,6 +794,9 @@ class NetlistBuilder:
         return COMPRESS_XOR2_CELL
 
     def compress_first_xnor_cell(self, bit_idx: int) -> str:
+        hot_lo = max(HOT_SUFFIX_CANDIDATE_LO, self.predicted_hot_suffix_lo - 1)
+        if bit_idx >= hot_lo:
+            return XNOR2_FAST_CELL
         if AGGRESSIVE_COMPRESS_LO <= bit_idx <= AGGRESSIVE_COMPRESS_HI:
             return XNOR2_FAST_CELL
         return XNOR2_CELL
@@ -793,7 +807,71 @@ class NetlistBuilder:
     def use_mixed_compressor(self, target: int, bit_idx: int) -> bool:
         if not MIXED_HIGH_LO <= bit_idx <= MIXED_HIGH_HI:
             return False
+        if bit_idx >= self.predicted_hot_suffix_lo:
+            return target <= 3
         return target == 2
+
+    def cpa_pressure_score(self, bit_idx: int) -> float:
+        if bit_idx < HOT_SUFFIX_CANDIDATE_LO or bit_idx >= WIDTH - 1:
+            return 0.0
+        score = 14.0 + 2.0 * (bit_idx - HOT_SUFFIX_CANDIDATE_LO)
+        if bit_idx >= 16:
+            score += 16.0 + 2.5 * (bit_idx - 16)
+        if bit_idx >= 24:
+            score += 10.0 + 2.0 * (bit_idx - 24)
+        if PREFIX_FAST_LO <= bit_idx <= PREFIX_FAST_HI:
+            score += 4.0
+        if MIXED_HIGH_LO <= bit_idx <= MIXED_HIGH_HI:
+            score += 6.0
+        return score
+
+    def column_joint_score(
+        self,
+        cols: list[list[PhasedBitRef]],
+        bit_idx: int,
+        target: int | None = None,
+        op_count: int = 0,
+        mixed_count: int = 0,
+    ) -> float:
+        if bit_idx >= WIDTH - 1:
+            return 0.0
+        col = cols[bit_idx]
+        arrival = max((bit[1] for bit in col), default=0.0)
+        height = len(col)
+        score = arrival + self.cpa_pressure_score(bit_idx)
+        if target is not None and height > target:
+            score += 14.0 * (height - target)
+        elif height >= 2:
+            score += 5.0 * (height - 1)
+        score += 8.0 * op_count + 12.0 * mixed_count
+        if height >= 2:
+            score += 6.0
+        if bit_idx >= 16 and height >= 2:
+            score += 10.0
+        if bit_idx >= 24 and height >= 2:
+            score += 10.0
+        return score
+
+    def update_predicted_hot_suffix(
+        self,
+        cols: list[list[PhasedBitRef]],
+        target: int | None = None,
+    ) -> int:
+        candidates: list[tuple[float, int]] = []
+        self.column_joint_scores = [0.0] * WIDTH
+        for idx in range(HOT_SUFFIX_CANDIDATE_LO, WIDTH - 1):
+            score = self.column_joint_score(cols, idx, target=target)
+            self.column_joint_scores[idx] = score
+            candidates.append((score, idx))
+        if not candidates:
+            self.predicted_hot_suffix_lo = WIDTH
+            return WIDTH
+        top_cols = sorted(candidates, reverse=True)[:HOT_SUFFIX_TOP_K]
+        self.predicted_hot_suffix_lo = max(
+            HOT_SUFFIX_CANDIDATE_LO,
+            min(idx for _, idx in top_cols) - 2,
+        )
+        return self.predicted_hot_suffix_lo
 
     def pick_operands(
         self,
@@ -891,6 +969,7 @@ class NetlistBuilder:
 
         stages: list[CompressorStage] = []
         for target in reversed(limits[:-1]):
+            self.update_predicted_hot_suffix(cols, target=target)
             stage_cols = [sorted(list(col), key=lambda item: item[1]) for col in cols]
             next_cols: list[list[PhasedBitRef]] = [[] for _ in cols]
             ops: list[CompressorOp] = []
@@ -938,6 +1017,7 @@ class NetlistBuilder:
                 next_cols[idx].extend(sorted(reduced, key=lambda item: item[1]))
             next_cols[-1].extend(stage_cols[-1])
             cols = [sorted(col, key=lambda item: item[1]) for col in next_cols]
+            self.update_predicted_hot_suffix(cols, target=target)
             stages.append(CompressorStage(target=target, operations=tuple(ops)))
         self.compressor_tree_ir = CompressorTreeIR(
             stages=tuple(stages),
@@ -957,10 +1037,13 @@ class NetlistBuilder:
 
         candidates: list[tuple[float, int]] = []
         for idx in range(HOT_SUFFIX_CANDIDATE_LO, WIDTH - 1):
-            arrival = max((bit[1] for bit in cols[idx]), default=0.0)
-            score = arrival + 8.0 * op_counts[idx] + 12.0 * mixed_counts[idx]
-            if len(self.compressor_tree_ir.outputs[idx]) >= 2:
-                score += 6.0
+            score = self.column_joint_score(
+                cols,
+                idx,
+                op_count=op_counts[idx],
+                mixed_count=mixed_counts[idx],
+            )
+            self.column_joint_scores[idx] = score
             candidates.append((score, idx))
         if not candidates:
             return WIDTH
