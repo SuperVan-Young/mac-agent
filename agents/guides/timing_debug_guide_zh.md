@@ -14,13 +14,13 @@
 ## 基本调用
 
 ```bash
-NETLIST_PATH="$(pwd)/mac16x16p32.v" \
+NETLIST_PATH="$(pwd)/results/fixed/generated/mac16x16p32.v" \
 LIBERTY_PATHS="$(make -s print-config | awk -F= '/^LIBERTY_PATHS=/{print $2}')" \
 SDC_PATH="$(pwd)/results/fixed/eval_sta/constraints.sdc" \
 TOP_MODULE=mac16x16p32 \
 TIMING_SUMMARY_REPORT="$(pwd)/results/fixed/eval_sta/timing_query_summary.rpt" \
 CRITICAL_PATH_REPORT="$(pwd)/results/fixed/eval_sta/critical_path.rpt" \
-bash eval/run_timer.sh openroad \
+bash eval/timing/run_timer.sh openroad \
   --max-paths 5 \
   --output-report "$(pwd)/results/fixed/eval_sta/top5_paths.rpt"
 ```
@@ -30,13 +30,13 @@ bash eval/run_timer.sh openroad \
 如果要只看某些输入 pin 到某些输出 pin：
 
 ```bash
-NETLIST_PATH="$(pwd)/mac16x16p32.v" \
+NETLIST_PATH="$(pwd)/results/fixed/generated/mac16x16p32.v" \
 LIBERTY_PATHS="$(make -s print-config | awk -F= '/^LIBERTY_PATHS=/{print $2}')" \
 SDC_PATH="$(pwd)/results/fixed/eval_sta/constraints.sdc" \
 TOP_MODULE=mac16x16p32 \
 TIMING_SUMMARY_REPORT="$(pwd)/results/fixed/eval_sta/timing_query_summary.rpt" \
 CRITICAL_PATH_REPORT="$(pwd)/results/fixed/eval_sta/critical_path.rpt" \
-bash eval/run_timer.sh openroad \
+bash eval/timing/run_timer.sh openroad \
   --from 'A[15],B[15]' \
   --to 'D[31]' \
   --max-paths 3 \

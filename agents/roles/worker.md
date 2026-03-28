@@ -23,7 +23,7 @@
 3. 阅读当前主线或上轮候选的日志与报告，先做瓶颈分析再决定优化点。
 4. 按策略模式推进优化。
 5. 只修改 `rtl/generate.py`。
-6. 生成本轮 `mac16x16p32.v`。
+6. 通过 `make generate` 或完整 `make all` 流程生成本轮 candidate RTL。
 7. 完成最终验收所需的验证流程。
 8. 汇报合法性、正确性、指标变化和是否建议合入。
 
@@ -87,15 +87,16 @@
 
 在当前共享工作区内按以下顺序执行：
 
-1. 运行 `rtl/generate.py`，生成 `mac16x16p32.v`
+1. 运行 `make generate`，生成 candidate RTL
 2. 运行完整评估：
 
 ```bash
-timeout 10m make clean && timeout 10m make all DESIGN_TYPE=candidate DUT=$(pwd)/mac16x16p32.v
+timeout 10m make clean && timeout 10m make all DESIGN_TYPE=candidate
 ```
 
 验证完成后，结果必须出现在固定位置：
 
+- `results/fixed/generated/mac16x16p32.v`
 - `results/fixed/summary.json`
 - `results/fixed/logs/check.log`
 - `results/fixed/logs/sim.log`

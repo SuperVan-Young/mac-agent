@@ -61,4 +61,4 @@ results/fixed/
 
 - baseline 会先通过 Genus 生成综合网表，再走后续统一评测流程
 - `CHECK_ENABLE=0` 是因为 baseline 不走 candidate legality check
-- 如果 AI 需要做更细的 area 定性分析，可执行 `make area-debug`，说明见 `docs/area_debug_guide_zh.md`
+- 如果 AI 需要做更细的 area 定性分析，可执行 `make area-debug`，说明见 `agents/guides/area_debug_guide_zh.md`

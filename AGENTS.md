@@ -15,6 +15,9 @@
 
 - Full candidate evaluation:
   - `make clean && make all`
+- Generate candidate RTL only:
+  - `make generate`
+  - default generated DUT: `results/fixed/generated/mac16x16p32.v`
 - Full baseline evaluation:
   - `make clean && make all DESIGN_NAME=baseline DESIGN_TYPE=baseline DUT=$(pwd)/rtl/baseline.v CHECK_ENABLE=0`
 - Common partial targets:
@@ -38,17 +41,22 @@ The goal is reproducible quality comparison across correctness, timing, and area
 
 ## Code Architecture
 
-- `rtl/`: baseline and candidate DUT netlists/RTL
-- `syn/`: baseline synthesis flow (Genus Tcl)
-- `check/`: candidate legality checks
-- `sim/`: simulation driver and testbench flow
-- `eval/`: timing/area runners and report parsers
+- `rtl/`: baseline RTL plus candidate RTL generator/compiler sources
+- `eval/check/`: candidate legality checks
+- `eval/sim/`: simulation driver, vector generator, and testbench
+- `eval/syn/`: baseline synthesis flow (Genus Tcl)
+- `eval/timing/`: timing analysis wrappers and OpenSTA templates
+- `eval/area/`: area analysis wrappers and report parsers
+- `eval/summary/`: summary/report aggregation
 - `env/`: default config and environment setup
 - `tech/`: ASAP7 libs/LEFs and related tech assets
-- `docs/`: user-facing guides and contract docs
+- `agents/`: model role definitions and AI-facing debug guides
+  - `agents/roles/`: scheduler/worker/refactor role specs
+  - `agents/guides/`: AI-facing debug guides
+- `docs/`: user-facing guides and compiler docs
 - `Makefile`: top-level orchestrator for baseline/candidate flows
 
 ## Role Dispatch
 
-- Main agent: read `scheduler.md`
-- Worker/sub-agent: read `worker.md`
+- Main agent: read `agents/roles/scheduler.md`
+- Worker/sub-agent: read `agents/roles/worker.md`
