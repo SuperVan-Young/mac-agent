@@ -287,6 +287,24 @@
         "area": 143.0,
         "cell_count": 1246
       }
+    },
+    {
+      "iteration": 15,
+      "metadata": {
+        "source": "agent",
+        "dut": "mac16x16p32.v",
+        "top_module": "mac16x16p32",
+        "comment": "Promoted worker-lib-aoi21 after strengthening only the top-bit final carry-bar AOI21 stage, shifting the worst path from D31 to D30 without area regression."
+      },
+      "result_summary": {
+        "correctness": "pass",
+        "timing_status": "pass",
+        "wns": 0.3358,
+        "tns": 0.0,
+        "critical_delay": 0.5642,
+        "area": 143.0,
+        "cell_count": 1246
+      }
     }
   ]
 }
