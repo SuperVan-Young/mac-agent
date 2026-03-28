@@ -26,10 +26,12 @@ MAJ_CELL = "MAJx2_ASAP7_75t_R"
 NOR2_CELL = "NOR2xp33_ASAP7_75t_R"
 PREFIX_FAST_LO = 14
 PREFIX_FAST_HI = 21
-COMPRESS_FAST_LO = 14
-COMPRESS_FAST_HI = 20
-MIXED_HIGH_LO = 18
+COMPRESS_FAST_LO = 12
+COMPRESS_FAST_HI = 30
+MIXED_HIGH_LO = 16
 MIXED_HIGH_HI = 31
+AGGRESSIVE_COMPRESS_LO = 18
+AGGRESSIVE_COMPRESS_HI = 30
 HOT_SUFFIX_CANDIDATE_LO = 22
 HOT_SUFFIX_TOP_K = 4
 DEFAULT_INPUT_SLEW = 10.0
@@ -133,6 +135,28 @@ class CompressorStage:
 class CompressorTreeIR:
     stages: tuple[CompressorStage, ...]
     outputs: tuple[tuple[PhasedBitRef, ...], ...]
+
+
+@dataclass(frozen=True)
+class PhaseOption:
+    bit: PhasedBitRef
+    inv_cost: int
+
+
+@dataclass(frozen=True)
+class PhaseOptions:
+    positive: PhaseOption
+    negative: PhaseOption
+
+
+@dataclass(frozen=True)
+class PhasePlan:
+    arrival: float
+    inv_cost: int
+    lhs: PhaseOption
+    rhs: PhaseOption
+    gate_kind: str
+    want_inverted: bool
 
 
 class LibertyTimingModel:
@@ -287,6 +311,7 @@ class NetlistBuilder:
         }
         self.compressor_tree_ir = CompressorTreeIR(stages=(), outputs=())
         self.hot_suffix_lo = WIDTH
+        self.phase_cache: dict[tuple[str, bool], PhaseOptions] = {}
 
     def new_wire(self, prefix: str) -> str:
         self.counter += 1
@@ -391,6 +416,198 @@ class NetlistBuilder:
             ),
         )
         return out
+
+    def phase_key(self, bit: PhasedBitRef) -> tuple[str, bool]:
+        sig, _, inverted = bit
+        return (sig, inverted)
+
+    def register_phase_options(self, base: PhasedBitRef, options: PhaseOptions) -> None:
+        self.phase_cache[self.phase_key(base)] = options
+        self.phase_cache[self.phase_key(options.positive.bit)] = options
+        self.phase_cache[self.phase_key(options.negative.bit)] = options
+
+    def choose_best_bit(self, options: PhaseOptions) -> PhasedBitRef:
+        pos = options.positive
+        neg = options.negative
+        pos_arrival = pos.bit[1]
+        neg_arrival = neg.bit[1]
+        if (pos_arrival, pos.inv_cost) <= (neg_arrival, neg.inv_cost):
+            return pos.bit
+        return neg.bit
+
+    def option_cost(self, option: PhaseOption) -> tuple[float, int]:
+        return (option.bit[1], option.inv_cost)
+
+    def ensure_phase_option(self, bit: PhasedBitRef, want_inverted: bool) -> PhaseOption:
+        sig, rank, inverted = bit
+        if sig == self.zero or inverted == want_inverted:
+            return PhaseOption((sig, rank, inverted), 0)
+        inv_sig = self.logic_inv(sig)
+        return PhaseOption((inv_sig, self.pin_state(inv_sig).arrival, want_inverted), 1)
+
+    def phase_options(self, bit: PhasedBitRef) -> PhaseOptions:
+        cached = self.phase_cache.get(self.phase_key(bit))
+        if cached is not None:
+            return cached
+        positive = self.ensure_phase_option(bit, False)
+        negative = self.ensure_phase_option(bit, True)
+        options = PhaseOptions(positive=positive, negative=negative)
+        self.register_phase_options(bit, options)
+        return options
+
+    def estimate_parity_plan(
+        self,
+        a: PhaseOption,
+        b: PhaseOption,
+        xor_cell: str,
+        xnor_cell: str,
+        want_inverted: bool,
+    ) -> PhasePlan:
+        a_sig, _, a_inv = a.bit
+        b_sig, _, b_inv = b.bit
+        if a_sig == self.zero:
+            tail = self.ensure_phase_option(b.bit, want_inverted)
+            return PhasePlan(
+                arrival=tail.bit[1],
+                inv_cost=a.inv_cost + b.inv_cost + tail.inv_cost,
+                lhs=a,
+                rhs=b,
+                gate_kind="rhs_passthrough",
+                want_inverted=want_inverted,
+            )
+        if b_sig == self.zero:
+            tail = self.ensure_phase_option(a.bit, want_inverted)
+            return PhasePlan(
+                arrival=tail.bit[1],
+                inv_cost=a.inv_cost + b.inv_cost + tail.inv_cost,
+                lhs=a,
+                rhs=b,
+                gate_kind="lhs_passthrough",
+                want_inverted=want_inverted,
+            )
+
+        pin_states = {"A": self.pin_state(a_sig), "B": self.pin_state(b_sig)}
+        inv_parity = a_inv ^ b_inv
+        candidates: list[PhasePlan] = []
+
+        for kind, cell, out_phase in (
+            ("xor", xor_cell, inv_parity),
+            ("xnor", xnor_cell, not inv_parity),
+        ):
+            state = self.timing_model.propagate(cell, "Y", pin_states)
+            total_inv = a.inv_cost + b.inv_cost
+            final_arrival = state.arrival
+            need_inv = out_phase != want_inverted
+            if need_inv:
+                state = self.timing_model.propagate("INVxp33_ASAP7_75t_R", "Y", {"A": state})
+                total_inv += 1
+                final_arrival = state.arrival
+            candidates.append(
+                PhasePlan(
+                    arrival=final_arrival,
+                    inv_cost=total_inv,
+                    lhs=a,
+                    rhs=b,
+                    gate_kind=kind,
+                    want_inverted=want_inverted,
+                )
+            )
+        return min(candidates, key=lambda item: (item.arrival, item.inv_cost))
+
+    def realize_parity_plan(
+        self,
+        plan: PhasePlan,
+        xor_cell: str,
+        xnor_cell: str,
+    ) -> PhaseOption:
+        a = plan.lhs
+        b = plan.rhs
+        kind = plan.gate_kind
+        want_inverted = plan.want_inverted
+        if kind == "rhs_passthrough":
+            tail = self.ensure_phase_option(b.bit, want_inverted)
+            return PhaseOption(tail.bit, plan.inv_cost)
+        if kind == "lhs_passthrough":
+            tail = self.ensure_phase_option(a.bit, want_inverted)
+            return PhaseOption(tail.bit, plan.inv_cost)
+        a_sig, _, a_inv = a.bit
+        b_sig, _, b_inv = b.bit
+        inv_parity = a_inv ^ b_inv
+        if kind == "xor":
+            out = self.logic_xor2(a_sig, b_sig, cell=xor_cell)
+            out_phase = inv_parity
+        else:
+            out = self.logic_xnor2(a_sig, b_sig, cell=xnor_cell)
+            out_phase = not inv_parity
+        if out_phase != want_inverted:
+            out = self.logic_inv(out)
+        return PhaseOption((out, self.pin_state(out).arrival, want_inverted), plan.inv_cost)
+
+    def phased_xor2(
+        self,
+        a: PhasedBitRef,
+        b: PhasedBitRef,
+        xor_cell: str = XOR2_CELL,
+        xnor_cell: str = XNOR2_CELL,
+        want_inverted: bool | None = None,
+    ) -> PhasedBitRef:
+        lhs = self.phase_options(a)
+        rhs = self.phase_options(b)
+        if want_inverted is None:
+            options = self.combine_phase_options(lhs, rhs, xor_cell, xnor_cell)
+            return self.choose_best_bit(options)
+        return self.realize_parity_plan(
+            self.estimate_parity_plan(
+            lhs.negative if a[2] else lhs.positive,
+            rhs.negative if b[2] else rhs.positive,
+            xor_cell,
+            xnor_cell,
+            want_inverted,
+            ),
+            xor_cell,
+            xnor_cell,
+        ).bit
+
+    def parity_views(
+        self,
+        a: PhasedBitRef,
+        b: PhasedBitRef,
+        xor_cell: str = XOR2_CELL,
+        xnor_cell: str = XNOR2_CELL,
+    ) -> tuple[PhasedBitRef, PhasedBitRef]:
+        options = self.combine_phase_options(
+            self.phase_options(a),
+            self.phase_options(b),
+            xor_cell,
+            xnor_cell,
+        )
+        self.register_phase_options(options.positive.bit, options)
+        return options.positive.bit, options.negative.bit
+
+    def combine_phase_options(
+        self,
+        lhs: PhaseOptions,
+        rhs: PhaseOptions,
+        xor_cell: str,
+        xnor_cell: str,
+    ) -> PhaseOptions:
+        def solve(want_inverted: bool) -> PhaseOption:
+            candidates: list[PhasePlan] = []
+            for a_opt in (lhs.positive, lhs.negative):
+                for b_opt in (rhs.positive, rhs.negative):
+                    candidates.append(
+                        self.estimate_parity_plan(
+                            a_opt,
+                            b_opt,
+                            xor_cell,
+                            xnor_cell,
+                            want_inverted,
+                        )
+                    )
+            best = min(candidates, key=lambda item: (item.arrival, item.inv_cost))
+            return self.realize_parity_plan(best, xor_cell, xnor_cell)
+
+        return PhaseOptions(positive=solve(False), negative=solve(True))
 
     def logic_ao21(self, a1: str, a2: str, b: str, cell: str = AO21_CELL) -> str:
         if a1 == self.zero or a2 == self.zero:
@@ -504,11 +721,7 @@ class NetlistBuilder:
         return sum_bar, carry_bar
 
     def materialize_positive(self, bit: PhasedBitRef) -> PhasedBitRef:
-        sig, rank, inverted = bit
-        if not inverted or sig == self.zero:
-            return bit
-        inv_sig = self.logic_inv(sig)
-        return (inv_sig, self.pin_state(inv_sig).arrival, False)
+        return self.phase_options(bit).positive.bit
 
     def logic_xor3(self, a: str, b: str, c: str) -> str:
         return self.logic_xor2(
@@ -556,30 +769,86 @@ class NetlistBuilder:
             return COMPRESS_FAST_XOR2_CELL
         return COMPRESS_XOR2_CELL
 
+    def compress_xnor_cell(self, bit_idx: int) -> str:
+        if COMPRESS_FAST_LO <= bit_idx <= COMPRESS_FAST_HI:
+            return XNOR2_FAST_CELL
+        return XNOR2_CELL
+
     def compress_first_xor_cell(self, bit_idx: int) -> str:
-        # Keep the first XOR in the FA on the smaller cell and only spend
-        # faster XORs on the second-stage sum combine within the D18 window.
+        if AGGRESSIVE_COMPRESS_LO <= bit_idx <= AGGRESSIVE_COMPRESS_HI:
+            return COMPRESS_FAST_XOR2_CELL
+        # Outside the timing-critical high-bit window keep the first XOR on
+        # the smaller cell and spend the faster variants only on the second
+        # sum combine.
         return COMPRESS_XOR2_CELL
+
+    def compress_first_xnor_cell(self, bit_idx: int) -> str:
+        if AGGRESSIVE_COMPRESS_LO <= bit_idx <= AGGRESSIVE_COMPRESS_HI:
+            return XNOR2_FAST_CELL
+        return XNOR2_CELL
+
+    def prefer_late_compress(self, target: int, bit_idx: int) -> bool:
+        return False
+
+    def use_mixed_compressor(self, target: int, bit_idx: int) -> bool:
+        if not MIXED_HIGH_LO <= bit_idx <= MIXED_HIGH_HI:
+            return False
+        return target == 2
+
+    def pick_operands(
+        self,
+        work: list[PhasedBitRef],
+        count: int,
+        prefer_late: bool,
+    ) -> list[PhasedBitRef]:
+        picked: list[PhasedBitRef] = []
+        for _ in range(count):
+            picked.append(work.pop(-1) if prefer_late else work.pop(0))
+        picked.sort(key=lambda item: item[1])
+        return picked
 
     def half_adder(
         self, a: PhasedBitRef, b: PhasedBitRef, bit_idx: int
     ) -> tuple[PhasedBitRef, PhasedBitRef]:
+        sum_options = self.combine_phase_options(
+            self.phase_options(a),
+            self.phase_options(b),
+            self.compress_xor_cell(bit_idx),
+            self.compress_xnor_cell(bit_idx),
+        )
+        sum_bit = self.choose_best_bit(sum_options)
+        self.register_phase_options(sum_bit, sum_options)
         a_sig, a_rank, _ = self.materialize_positive(a)
         b_sig, b_rank, _ = self.materialize_positive(b)
         if a_sig == self.zero:
             return (b_sig, b_rank, False), (self.zero, -1, False)
         if b_sig == self.zero:
             return (a_sig, a_rank, False), (self.zero, -1, False)
-        sum_wire = self.logic_xor2(a_sig, b_sig, cell=self.compress_xor_cell(bit_idx))
         carry_wire = self.logic_and(a_sig, b_sig)
         return (
-            (sum_wire, self.pin_state(sum_wire).arrival, False),
+            sum_bit,
             (carry_wire, self.pin_state(carry_wire).arrival, False),
         )
 
     def full_adder(
         self, a: PhasedBitRef, b: PhasedBitRef, c: PhasedBitRef, bit_idx: int
     ) -> tuple[PhasedBitRef, PhasedBitRef]:
+        xor_ab_options = self.combine_phase_options(
+            self.phase_options(a),
+            self.phase_options(b),
+            self.compress_first_xor_cell(bit_idx),
+            self.compress_first_xnor_cell(bit_idx),
+        )
+        xor_ab = self.choose_best_bit(xor_ab_options)
+        self.register_phase_options(xor_ab, xor_ab_options)
+        sum_options = self.combine_phase_options(
+            xor_ab_options,
+            self.phase_options(c),
+            self.compress_xor_cell(bit_idx),
+            self.compress_xnor_cell(bit_idx),
+        )
+        sum_bit = self.choose_best_bit(sum_options)
+        self.register_phase_options(sum_bit, sum_options)
         a_sig, a_rank, _ = self.materialize_positive(a)
         b_sig, b_rank, _ = self.materialize_positive(b)
         c_sig, c_rank, _ = self.materialize_positive(c)
@@ -589,11 +858,9 @@ class NetlistBuilder:
             return self.half_adder(a, c, bit_idx)
         if c_sig == self.zero:
             return self.half_adder(a, b, bit_idx)
-        xor_ab = self.logic_xor2(a_sig, b_sig, cell=self.compress_first_xor_cell(bit_idx))
-        sum_wire = self.logic_xor2(xor_ab, c_sig, cell=self.compress_xor_cell(bit_idx))
         carry_wire = self.logic_maj3(a_sig, b_sig, c_sig)
         return (
-            (sum_wire, self.pin_state(sum_wire).arrival, False),
+            sum_bit,
             (carry_wire, self.pin_state(carry_wire).arrival, False),
         )
 
@@ -637,14 +904,10 @@ class NetlistBuilder:
                 reduced: list[PhasedBitRef] = []
                 while carried_in + len(reduced) + len(work) > target:
                     excess = carried_in + len(reduced) + len(work) - target
-                    # The low-bit mixed window can produce invalid polarity
-                    # interactions when combined with the high-bit mixed tail.
-                    # Keep mixed compressors only in the upper window where
-                    # they still buy timing without breaking correctness.
-                    use_mixed = target == 2 and MIXED_HIGH_LO <= idx <= MIXED_HIGH_HI
+                    use_mixed = self.use_mixed_compressor(target, idx)
+                    prefer_late = self.prefer_late_compress(target, idx)
                     if excess == 1:
-                        a = work.pop(0)
-                        b = work.pop(0)
+                        a, b = self.pick_operands(work, 2, prefer_late)
                         if use_mixed:
                             sum_wire, carry_wire = self.mixed_stage_half_adder(a, b)
                         else:
@@ -652,9 +915,7 @@ class NetlistBuilder:
                         op_kind = "ha"
                         input_bits = (a, b)
                     else:
-                        a = work.pop(0)
-                        b = work.pop(0)
-                        c = work.pop(0)
+                        a, b, c = self.pick_operands(work, 3, prefer_late)
                         if use_mixed:
                             sum_wire, carry_wire = self.mixed_stage_full_adder(a, b, c)
                         else:
@@ -708,7 +969,12 @@ class NetlistBuilder:
         return max(HOT_SUFFIX_CANDIDATE_LO, min(idx for _, idx in top_cols) - 1)
 
     def rewrite_hot_suffix_rows(self, cols: list[list[PhasedBitRef]]) -> list[list[PhasedBitRef]]:
-        rewritten = [list(col) for col in cols]
+        rewritten: list[list[PhasedBitRef]] = []
+        for idx, col in enumerate(cols):
+            ordered = list(col)
+            if self.hot_suffix_lo <= idx <= AGGRESSIVE_COMPRESS_HI and len(ordered) >= 2:
+                ordered.sort(key=lambda item: item[1])
+            rewritten.append(ordered)
         self.compressor_tree_ir = CompressorTreeIR(
             stages=self.compressor_tree_ir.stages,
             outputs=tuple(tuple(col) for col in rewritten),
@@ -767,52 +1033,46 @@ class NetlistBuilder:
             else:
                 row_b_bits.append((self.zero, -1, False))
 
-        bit_p: list[str] = []
+        bit_p_phase: list[PhasedBitRef] = []
         p_prev: list[str] = []
         g_prev: list[str] = []
-        top_sum_sig = self.zero
-        top_sum_use_xor = False
+        top_sum_phase: PhasedBitRef = (self.zero, -1, False)
         for idx in range(WIDTH - 1):
             a_bit = row_a_bits[idx]
             b_bit = row_b_bits[idx]
             a_sig, _, a_inv = a_bit
             b_sig, _, b_inv = b_bit
+            p_pos, p_phase = self.parity_views(
+                a_bit,
+                b_bit,
+                xor_cell=self.prefix_xor_cell(idx),
+                xnor_cell=self.prefix_xnor_cell(idx),
+            )
             if a_sig == self.zero or b_sig == self.zero:
-                a_sig, _, _ = self.materialize_positive(a_bit)
-                b_sig, _, _ = self.materialize_positive(b_bit)
-                p = self.logic_xor2(a_sig, b_sig, cell=self.prefix_xor_cell(idx))
-                g = self.logic_and(a_sig, b_sig)
+                a_pos, _, _ = self.materialize_positive(a_bit)
+                b_pos, _, _ = self.materialize_positive(b_bit)
+                g = self.logic_and(a_pos, b_pos)
             elif a_inv == b_inv:
-                p = self.logic_xor2(a_sig, b_sig, cell=self.prefix_xor_cell(idx))
                 if a_inv:
                     g = self.logic_nor(a_sig, b_sig)
                 else:
                     g = self.logic_and(a_sig, b_sig)
             else:
-                # Opposite-polarity survivors preserve parity via XNOR.
-                p = self.logic_xnor2(a_sig, b_sig, cell=self.prefix_xnor_cell(idx))
                 a_pos, _, _ = self.materialize_positive(a_bit)
                 b_pos, _, _ = self.materialize_positive(b_bit)
                 g = self.logic_and(a_pos, b_pos)
-            bit_p.append(p)
-            p_prev.append(p)
+            bit_p_phase.append(p_phase)
+            p_prev.append(p_pos[0])
             g_prev.append(g)
 
         a_bit = row_a_bits[WIDTH - 1]
         b_bit = row_b_bits[WIDTH - 1]
-        a_sig, _, a_inv = a_bit
-        b_sig, _, b_inv = b_bit
-        if a_sig == self.zero or b_sig == self.zero:
-            a_sig, _, _ = self.materialize_positive(a_bit)
-            b_sig, _, _ = self.materialize_positive(b_bit)
-            top_sum_sig = self.logic_xor2(a_sig, b_sig, cell=self.output_xor_cell(WIDTH - 1))
-        elif a_inv == b_inv:
-            top_sum_sig = self.logic_xor2(a_sig, b_sig, cell=self.output_xor_cell(WIDTH - 1))
-        else:
-            # D[31] only needs the incoming carry from bit 30, so keep the
-            # local parity complemented and consume it directly with XOR.
-            top_sum_sig = self.logic_xor2(a_sig, b_sig, cell=self.output_xor_cell(WIDTH - 1))
-            top_sum_use_xor = True
+        _, top_sum_phase = self.parity_views(
+            a_bit,
+            b_bit,
+            xor_cell=self.output_xor_cell(WIDTH - 1),
+            xnor_cell=self.output_xnor_cell(WIDTH - 1),
+        )
 
         for distance in (1, 2, 4, 8):
             p_next: list[str] = []
@@ -847,32 +1107,30 @@ class NetlistBuilder:
         self.emit("")
         for idx in range(WIDTH - 1):
             if idx == 0:
-                sum_wire = bit_p[idx]
+                sum_bit = bit_p_phase[idx]
             elif idx <= 16:
-                sum_wire = self.logic_xor2(
-                    g_prev[idx - 1],
-                    bit_p[idx],
-                    cell=self.output_xor_cell(idx),
+                sum_bit = self.phased_xor2(
+                    (g_prev[idx - 1], self.pin_state(g_prev[idx - 1]).arrival, False),
+                    bit_p_phase[idx],
+                    xor_cell=self.output_xor_cell(idx),
+                    xnor_cell=self.output_xnor_cell(idx),
                 )
             else:
-                sum_wire = self.logic_xnor2(
-                    final_carry_bar[idx - 1],
-                    bit_p[idx],
-                    cell=self.output_xnor_cell(idx),
+                sum_bit = self.phased_xor2(
+                    (final_carry_bar[idx - 1], self.pin_state(final_carry_bar[idx - 1]).arrival, True),
+                    bit_p_phase[idx],
+                    xor_cell=self.output_xor_cell(idx),
+                    xnor_cell=self.output_xnor_cell(idx),
                 )
+            sum_wire, _, _ = self.materialize_positive(sum_bit)
             self.emit(f"assign D[{idx}] = {sum_wire};")
-        if top_sum_use_xor:
-            sum_wire = self.logic_xor2(
-                final_carry_bar[WIDTH - 2],
-                top_sum_sig,
-                cell=self.output_xor_cell(WIDTH - 1),
-            )
-        else:
-            sum_wire = self.logic_xnor2(
-                final_carry_bar[WIDTH - 2],
-                top_sum_sig,
-                cell=self.output_xnor_cell(WIDTH - 1),
-            )
+        sum_bit = self.phased_xor2(
+            (final_carry_bar[WIDTH - 2], self.pin_state(final_carry_bar[WIDTH - 2]).arrival, True),
+            top_sum_phase,
+            xor_cell=self.output_xor_cell(WIDTH - 1),
+            xnor_cell=self.output_xnor_cell(WIDTH - 1),
+        )
+        sum_wire, _, _ = self.materialize_positive(sum_bit)
         self.emit(f"assign D[{WIDTH - 1}] = {sum_wire};")
 
         self.emit("endmodule")
