@@ -341,6 +341,24 @@
         "area": 178.0,
         "cell_count": 1538
       }
+    },
+    {
+      "iteration": 18,
+      "metadata": {
+        "source": "agent",
+        "dut": "mac16x16p32.v",
+        "top_module": "mac16x16p32",
+        "comment": "Observed the compressor-tail to prefix-entry path as the new bottleneck after the AO21-based prefix carry refactor; introduced an arrival-aware Dadda compressor scheduler that keeps later-arriving signals off longer xor_sum chains and prefers them on the faster cin/carry path; this improved timing without any area or cell-count regression."
+      },
+      "result_summary": {
+        "correctness": "pass",
+        "timing_status": "pass",
+        "wns": 0.2721,
+        "tns": 0.0,
+        "critical_delay": 0.6279,
+        "area": 178.0,
+        "cell_count": 1538
+      }
     }
   ]
 }

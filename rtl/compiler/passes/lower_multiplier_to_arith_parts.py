@@ -42,16 +42,47 @@ def _build_dadda_targets(max_height: int) -> list[int]:
     return list(reversed(targets))
 
 
+def _initial_arrival(signal: str) -> float:
+    if signal.startswith("C["):
+        return 0.0
+    if signal.startswith("pp_"):
+        return 1.0
+    return 0.0
+
+
+def _signal_sort_key(arrival: dict[str, float], signal: str) -> tuple[float, str]:
+    return arrival.get(signal, 0.0), signal
+
+
+def _estimate_half_adder_arrival(lhs_arrival: float, rhs_arrival: float) -> tuple[float, float]:
+    base = max(lhs_arrival, rhs_arrival)
+    return base + 2.0, base + 1.0
+
+
+def _estimate_full_adder_arrival(
+    lhs_arrival: float, rhs_arrival: float, cin_arrival: float
+) -> tuple[float, float]:
+    sum_arrival = max(lhs_arrival + 2.0, rhs_arrival + 2.0, cin_arrival + 1.0)
+    carry_arrival = max(lhs_arrival + 1.5, rhs_arrival + 1.5, cin_arrival + 1.0)
+    return sum_arrival, carry_arrival
+
+
 def _plan_compressor_tree(
     columns: dict[int, list[str]],
 ) -> tuple[list[tuple[str, str, str, str, str, str, str]], dict[int, str], dict[int, str]]:
     planned_columns = {column: list(signals) for column, signals in columns.items()}
     max_height = max((len(signals) for signals in planned_columns.values()), default=0)
     stages: list[tuple[str, str, str, str, str, str, str]] = []
+    arrival = {
+        signal: _initial_arrival(signal)
+        for signals in planned_columns.values()
+        for signal in signals
+    }
 
     for stage_index, target in enumerate(_build_dadda_targets(max_height)):
         for column in range(max(planned_columns) + 2):
             signals = planned_columns.setdefault(column, [])
+            signals.sort(key=lambda signal: _signal_sort_key(arrival, signal))
             while len(signals) > target:
                 excess = len(signals) - target
                 if excess == 1:
@@ -59,23 +90,56 @@ def _plan_compressor_tree(
                     rhs = signals.pop(0)
                     sum_out = f"ct_s{stage_index}_c{column}_sum{len(stages)}"
                     carry_out = f"ct_s{stage_index}_c{column + 1}_carry{len(stages)}"
-                    stages.append(("ha", f"ct_s{stage_index}_c{column}_ha{len(stages)}", lhs, rhs, "", sum_out, carry_out))
+                    sum_arrival, carry_arrival = _estimate_half_adder_arrival(
+                        arrival[lhs], arrival[rhs]
+                    )
+                    arrival[sum_out] = sum_arrival
+                    arrival[carry_out] = carry_arrival
+                    stages.append(
+                        (
+                            "ha",
+                            f"ct_s{stage_index}_c{column}_ha{len(stages)}",
+                            lhs,
+                            rhs,
+                            "",
+                            sum_out,
+                            carry_out,
+                        )
+                    )
                     signals.append(sum_out)
                     planned_columns.setdefault(column + 1, []).append(carry_out)
+                    signals.sort(key=lambda signal: _signal_sort_key(arrival, signal))
                     continue
 
-                lhs = signals.pop(0)
-                rhs = signals.pop(0)
-                cin = signals.pop(0)
+                chosen = [signals.pop(0), signals.pop(0), signals.pop(0)]
+                chosen.sort(key=lambda signal: _signal_sort_key(arrival, signal))
+                lhs, rhs, cin = chosen
                 sum_out = f"ct_s{stage_index}_c{column}_sum{len(stages)}"
                 carry_out = f"ct_s{stage_index}_c{column + 1}_carry{len(stages)}"
-                stages.append(("fa", f"ct_s{stage_index}_c{column}_fa{len(stages)}", lhs, rhs, cin, sum_out, carry_out))
+                sum_arrival, carry_arrival = _estimate_full_adder_arrival(
+                    arrival[lhs], arrival[rhs], arrival[cin]
+                )
+                arrival[sum_out] = sum_arrival
+                arrival[carry_out] = carry_arrival
+                stages.append(
+                    (
+                        "fa",
+                        f"ct_s{stage_index}_c{column}_fa{len(stages)}",
+                        lhs,
+                        rhs,
+                        cin,
+                        sum_out,
+                        carry_out,
+                    )
+                )
                 signals.append(sum_out)
                 planned_columns.setdefault(column + 1, []).append(carry_out)
+                signals.sort(key=lambda signal: _signal_sort_key(arrival, signal))
 
     lhs_row: dict[int, str] = {}
     rhs_row: dict[int, str] = {}
     for column, signals in sorted(planned_columns.items()):
+        signals.sort(key=lambda signal: _signal_sort_key(arrival, signal))
         if len(signals) > 2:
             raise AssertionError(f"Compressor tree did not converge at column {column}: {signals}")
         if signals:
