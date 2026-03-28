@@ -413,6 +413,24 @@
         "area": 164.0,
         "cell_count": 1538
       }
+    },
+    {
+      "iteration": 22,
+      "metadata": {
+        "source": "agent",
+        "dut": "mac16x16p32.v",
+        "top_module": "mac16x16p32",
+        "comment": "Observed that the timing analyzer still treated preserved module boundaries too locally and could misclassify compressor and prefix instances near inter-module critical windows; extended the reusable func timing analysis to propagate top-level input arrival and downstream tail information across the instance graph, then used those bidirectional scores to preserve globally critical cells; this kept correctness and timing pass, improved critical_delay from 0.6347 to 0.6283 and wns from 0.2653 to 0.2717, and increased area from 164.0 to 166.0."
+      },
+      "result_summary": {
+        "correctness": "pass",
+        "timing_status": "pass",
+        "wns": 0.2717,
+        "tns": 0.0,
+        "critical_delay": 0.6283,
+        "area": 166.0,
+        "cell_count": 1538
+      }
     }
   ]
 }
