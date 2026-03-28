@@ -12,6 +12,7 @@ def test_plan_compressor_tree_uses_latest_selected_input_as_cin() -> None:
                 "pp_2_0",
                 "C[2]",
                 "C[3]",
+                "pp_3_0",
             ]
         }
     )

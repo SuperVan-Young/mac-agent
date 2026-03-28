@@ -203,12 +203,17 @@ def collect_instantiations(module_body: str) -> list[str]:
     return instances
 
 
-def check_cells(module_body: str, allowlist: set[str], errors: list[str]) -> None:
+def check_cells(
+    module_body: str,
+    allowlist: set[str],
+    local_modules: set[str],
+    errors: list[str],
+) -> None:
     cells = collect_instantiations(module_body)
     if not cells:
         errors.append("Top module has no cell instantiations")
         return
-    disallowed = sorted({c for c in cells if c not in allowlist})
+    disallowed = sorted({c for c in cells if c not in allowlist and c not in local_modules})
     if disallowed:
         errors.append(
             "Found cell/module instantiations not present in allowlist: "
@@ -234,12 +239,13 @@ def run_checks(netlist_path: pathlib.Path, allowlist_path: pathlib.Path | None) 
         errors.append(f"Expected exactly one top module named {CANONICAL_TOP}, found {len(top_modules)}")
         return False, errors
     top = top_modules[0]
+    local_modules = {module.name for module in modules if module.name != CANONICAL_TOP}
 
     allowlist = load_allowlist(allowlist_path)
     check_interface(top, errors)
     check_basic_top_validation(top, errors)
     check_forbidden_arithmetic(top.body, errors)
-    check_cells(top.body, allowlist, errors)
+    check_cells(top.body, allowlist, local_modules, errors)
     return not errors, errors
 
 

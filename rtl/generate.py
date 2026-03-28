@@ -62,8 +62,10 @@ def main() -> int:
     else:
         result = compile_text(_build_default_mlir(args.top_name), DEFAULT_PASSES)
 
+    args.output_verilog.parent.mkdir(parents=True, exist_ok=True)
     args.output_verilog.write_text(result.verilog_text, encoding="utf-8")
     if args.output_ir is not None:
+        args.output_ir.parent.mkdir(parents=True, exist_ok=True)
         args.output_ir.write_text(result.ir_text, encoding="utf-8")
     return 0
 

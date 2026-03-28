@@ -185,7 +185,7 @@ class LowerMultiplierToArithPartsPattern(RewritePattern):
         for bit in range(min(addend_port.width, output_port.width)):
             columns.setdefault(bit, []).append(f"{addend_port.name}[{bit}]")
 
-        stages, lhs_row, rhs_row = _plan_compressor_tree(columns)
+        _, lhs_row, rhs_row = _plan_compressor_tree(columns)
 
         rewriter.replace_matched_op(
             [
@@ -197,7 +197,6 @@ class LowerMultiplierToArithPartsPattern(RewritePattern):
                 CompressorTreeOp(
                     reduction_type="dadda",
                     columns=columns,
-                    stages=stages,
                     owner="arith.compressor_tree",
                 ),
                 PrefixTreeOp(

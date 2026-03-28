@@ -1,9 +1,15 @@
 // RUN: compiler-opt --pass lower-arith-to-logic --pass verify-post-arith-to-logic
+// CHECK: "logic.instance"() {instance_name = "prefix_tree_0_inst"
+// CHECK: callee = "mac16x16p32__prefix_tree_0"
+// CHECK: "func.func"() ({
 // CHECK: "logic.xor2"() {instance_name = "pt_b0_xor_p"
 // CHECK: "logic.and2"() {instance_name = "pt_b0_and_g"
 // CHECK: "logic.and2"() {instance_name = "pt_s0_and_p_1"
 // CHECK: "logic.ao21"() {instance_name = "pt_s0_ao21_g_1"
 // CHECK: "logic.xor2"() {instance_name = "pt_b3_xor_sum"
+// CHECK: logic.region_kind = "arith.prefix_tree"
+// CHECK: sym_name = "mac16x16p32__prefix_tree_0"
+// CHECK: sym_visibility = "private"
 // CHECK-NOT: "logic.full_adder"() {instance_name = "pt_b
 // CHECK-NOT: "arith.prefix_tree"()
 "builtin.module"() ({

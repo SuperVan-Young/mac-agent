@@ -8,6 +8,7 @@ from pathlib import Path
 
 from xdsl.context import Context
 from xdsl.dialects.builtin import Builtin, ModuleOp
+from xdsl.dialects.func import Func
 from xdsl.parser import Parser
 from xdsl.printer import Printer
 
@@ -39,6 +40,7 @@ PASS_REGISTRY = {
 def build_context() -> Context:
     ctx = Context()
     ctx.load_dialect(Builtin)
+    ctx.load_dialect(Func)
     ctx.load_dialect(ARITH_DIALECT)
     ctx.load_dialect(LOGIC_DIALECT)
     ctx.load_dialect(ASAP7_DIALECT)
