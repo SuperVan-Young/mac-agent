@@ -2,12 +2,36 @@
 
 from __future__ import annotations
 
-from xdsl.dialects.builtin import ModuleOp
+from xdsl.dialects.builtin import ArrayAttr, ModuleOp, StringAttr
 
 from ..dialects.asap7 import FullAdderOp, HalfAdderOp
+from ..signals import SignalDecl, decode_signal_decls
 
 
-def emit_verilog(module: ModuleOp, top_name: str = "mac16x16p32") -> str:
+def _read_module_signature(module: ModuleOp) -> tuple[str, list[SignalDecl], list[SignalDecl]]:
+    func_name_attr = module.attributes.get("func_name")
+    input_ports_attr = module.attributes.get("input_ports")
+    output_ports_attr = module.attributes.get("output_ports")
+    if not isinstance(func_name_attr, StringAttr):
+        raise AssertionError("builtin.module is missing string attribute 'func_name'")
+    if not isinstance(input_ports_attr, ArrayAttr):
+        raise AssertionError("builtin.module is missing array attribute 'input_ports'")
+    if not isinstance(output_ports_attr, ArrayAttr):
+        raise AssertionError("builtin.module is missing array attribute 'output_ports'")
+    return (
+        func_name_attr.data,
+        decode_signal_decls(input_ports_attr),
+        decode_signal_decls(output_ports_attr),
+    )
+
+
+def _emit_port_decl(signal: SignalDecl) -> str:
+    width = "" if signal.width == 1 else f" [{signal.width - 1}:0]"
+    return f"  {signal.kind}{width} {signal.name};"
+
+
+def emit_verilog(module: ModuleOp) -> str:
+    top_name, input_ports, output_ports = _read_module_signature(module)
     wires: set[str] = set()
     referenced_signals: set[str] = set()
     instances: list[str] = []
@@ -25,7 +49,7 @@ def emit_verilog(module: ModuleOp, top_name: str = "mac16x16p32") -> str:
                 f"  HAxp5_ASAP7_75t_R {op.instance_name.data}({op.sum_out.data}, {op.carry_out.data}, {op.lhs.data}, {op.rhs.data});"
             )
 
-    declared_ports = {"A", "B", "C", "D"}
+    declared_ports = {signal.name for signal in input_ports + output_ports}
     for signal in referenced_signals:
         if "[" in signal:
             base = signal.split("[", 1)[0]
@@ -34,19 +58,21 @@ def emit_verilog(module: ModuleOp, top_name: str = "mac16x16p32") -> str:
         elif signal not in declared_ports:
             wires.add(signal)
 
+    port_names = ", ".join(signal.name for signal in input_ports + output_ports)
     lines = [
-        f"module {top_name}(A, B, C, D);",
-        "  input [15:0] A;",
-        "  input [15:0] B;",
-        "  input [31:0] C;",
-        "  output [31:0] D;",
+        f"module {top_name}({port_names});",
     ]
+    for signal in input_ports:
+        lines.append(_emit_port_decl(signal))
+    for signal in output_ports:
+        lines.append(_emit_port_decl(signal))
     for wire_name in sorted(wires):
         lines.append(f"  wire {wire_name};")
     lines.append("")
     lines.extend(instances)
     lines.append("")
-    lines.append("  assign D = C;")
+    if output_ports and input_ports:
+        lines.append(f"  assign {output_ports[0].name} = {input_ports[-1].name};")
     lines.append("endmodule")
     lines.append("")
     return "\n".join(lines)

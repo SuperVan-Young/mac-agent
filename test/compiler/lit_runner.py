@@ -12,6 +12,8 @@ from rtl.compiler.passes.emit_verilog import emit_verilog
 from rtl.compiler.passes.lower_arith_to_logic import LowerArithToLogicPass
 from rtl.compiler.passes.lower_logic_to_asap7 import LowerLogicToAsap7Pass
 from rtl.compiler.pipeline import build_context
+from rtl.compiler.passes.verify_post_arith_to_logic import PostArithToLogicVerificationPass
+from rtl.compiler.passes.verify_post_logic_to_physical import PostLogicToPhysicalVerificationPass
 
 
 @dataclass(frozen=True)
@@ -94,8 +96,12 @@ def execute_run_spec(run_spec: RunSpec, source: str) -> str:
     for pass_name in run_spec.passes:
         if pass_name == "lower-arith-to-logic":
             LowerArithToLogicPass().apply(ctx, module)
+        elif pass_name == "verify-post-arith-to-logic":
+            PostArithToLogicVerificationPass().apply(ctx, module)
         elif pass_name == "lower-logic-to-asap7":
             LowerLogicToAsap7Pass().apply(ctx, module)
+        elif pass_name == "verify-post-logic-to-physical":
+            PostLogicToPhysicalVerificationPass().apply(ctx, module)
         elif pass_name == "emit-verilog":
             emit = "verilog"
         else:

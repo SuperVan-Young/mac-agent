@@ -40,16 +40,35 @@ test/compiler/passes/lower_arith_to_logic/basic.mlir
 2. `// CHECK:` / `// CHECK-NOT:` 注释
 3. 输入 IR
 
+当前输入根节点需要带最基础的模块签名属性：
+
+1. `func_name`
+2. `input_ports`
+3. `output_ports`
+
+端口编码格式为：
+
+```text
+"<kind>:<name>:<width>"
+```
+
+例如：
+
+```text
+"input:A:16"
+"output:D:32"
+```
+
 示例：
 
 ```mlir
-// RUN: compiler-opt --pass lower-arith-to-logic
+// RUN: compiler-opt --pass lower-arith-to-logic --pass verify-post-arith-to-logic
 // CHECK: "logic.half_adder"() {instance_name = "ct_c0_ha"
 // CHECK: "logic.full_adder"() {instance_name = "ct_c1_fa"
 // CHECK-NOT: "arith.compressor_tree"()
 "builtin.module"() ({
   "arith.compressor_tree"() {reduction_type = "dadda", columns = ["c0=A[0],B[0]", "c1=pp_0_1,pp_1_0,C[0]"], owner = "arith.compressor_tree"} : () -> ()
-}) : () -> ()
+}) {func_name = "mac16x16p32", input_ports = ["input:A:16", "input:B:16", "input:C:32"], output_ports = ["output:D:32"]} : () -> ()
 ```
 
 ## 4. 支持的 RUN 语法
@@ -63,7 +82,9 @@ test/compiler/passes/lower_arith_to_logic/basic.mlir
 支持的 pass：
 
 - `lower-arith-to-logic`
+- `verify-post-arith-to-logic`
 - `lower-logic-to-asap7`
+- `verify-post-logic-to-physical`
 - `emit-verilog`
 
 支持的输出方式：
