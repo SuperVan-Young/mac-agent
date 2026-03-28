@@ -18,6 +18,7 @@ COMPRESS_FAST_XOR2_CELL = "XOR2x2_ASAP7_75t_R"
 OUTPUT_XOR2_CELL = "XOR2xp5_ASAP7_75t_R"
 AO21_CELL = "AO21x1_ASAP7_75t_R"
 AOI21_CELL = "AOI21xp5_ASAP7_75t_R"
+FINAL_CARRY_STRONG_AOI21_CELL = "AOI21x1_ASAP7_75t_R"
 MAJ_CELL = "MAJx2_ASAP7_75t_R"
 NOR2_CELL = "NOR2xp33_ASAP7_75t_R"
 PREFIX_FAST_LO = 14
@@ -105,7 +106,7 @@ class NetlistBuilder:
         self.emit_pos_inst(AO21_CELL, out, a1, a2, b)
         return out
 
-    def logic_aoi21(self, a1: str, a2: str, b: str) -> str:
+    def logic_aoi21(self, a1: str, a2: str, b: str, cell: str = AOI21_CELL) -> str:
         if a1 == self.zero or a2 == self.zero:
             return self.logic_inv(b)
         if b == self.zero:
@@ -115,7 +116,7 @@ class NetlistBuilder:
             return nand
         out = self.new_wire("aoi21")
         self.emit(f"wire {out};")
-        self.emit_pos_inst(AOI21_CELL, out, a1, a2, b)
+        self.emit_pos_inst(cell, out, a1, a2, b)
         return out
 
     def logic_maj3(self, a: str, b: str, c: str) -> str:
@@ -360,7 +361,13 @@ class NetlistBuilder:
 
         final_carry_bar = [self.zero] * WIDTH
         for idx in range(16, WIDTH - 1):
-            final_carry_bar[idx] = self.logic_aoi21(p_prev[idx], g_prev[idx - 16], g_prev[idx])
+            cell = FINAL_CARRY_STRONG_AOI21_CELL if idx == WIDTH - 2 else AOI21_CELL
+            final_carry_bar[idx] = self.logic_aoi21(
+                p_prev[idx],
+                g_prev[idx - 16],
+                g_prev[idx],
+                cell=cell,
+            )
 
         self.emit("")
         for idx in range(WIDTH - 1):
