@@ -2,10 +2,25 @@ REPO_ROOT ?= $(CURDIR)
 
 DESIGN_NAME ?= candidate_mac16x16p32
 DESIGN_TYPE ?= candidate
-# Candidate iterations are generated into the repo root by rtl/generate.py.
-DUT ?= $(REPO_ROOT)/mac16x16p32.v
 
 TOP_MODULE ?= mac16x16p32
+
+RTL_GENERATOR ?= $(REPO_ROOT)/rtl/generate.py
+FLOW_SCRIPT_ROOT ?= $(REPO_ROOT)/eval
+FLOW_RESULTS_ROOT ?= $(REPO_ROOT)/results/fixed
+GENERATED_RTL_DIR ?= $(FLOW_RESULTS_ROOT)/generated
+GENERATED_DUT ?= $(GENERATED_RTL_DIR)/$(TOP_MODULE).v
+GENERATED_IR ?= $(GENERATED_RTL_DIR)/$(TOP_MODULE).post.mlir
+GENERATE_INPUT_MLIR ?=
+GENERATE_DUMP_IR ?= 0
+
+ifeq ($(DESIGN_TYPE),baseline)
+GENERATE_ENABLE ?= 0
+DUT ?= $(REPO_ROOT)/rtl/baseline.v
+else
+GENERATE_ENABLE ?= 1
+DUT ?= $(GENERATED_DUT)
+endif
 
 # Baseline configurable MAC shape.
 # Candidate flows remain on the canonical 16x16->32 interface by default.
@@ -29,7 +44,6 @@ SIM_PARALLEL_JOBS ?= 0
 CHECK_ENABLE ?= 1
 
 # Canonical scheduler-inspectable output root.
-FLOW_RESULTS_ROOT ?= $(REPO_ROOT)/results/fixed
 RESULTS_DIR ?= $(FLOW_RESULTS_ROOT)
 LOG_DIR ?= $(RESULTS_DIR)/logs
 CHECK_LOG ?= $(LOG_DIR)/check.log
