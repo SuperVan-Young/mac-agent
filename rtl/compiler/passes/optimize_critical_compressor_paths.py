@@ -6,14 +6,15 @@ from dataclasses import dataclass
 import os
 
 from xdsl.context import Context
-from xdsl.dialects.builtin import ModuleOp, StringAttr
+from xdsl.dialects.builtin import ArrayAttr, ModuleOp, StringAttr
 from xdsl.dialects.func import FuncOp
 from xdsl.passes import ModulePass
 
 from ..analysis import analyze_module_timing, load_default_liberty_model
 from ..dialects.asap7 import And2Op, Ao21Op, Xor2Op
 from ..dialects.logic import ConstantOp, InputPortOp
-from ..ir import require_wire_name
+from ..ir import expand_signal_decl_refs, require_wire_name
+from ..signals import decode_signal_decls
 
 
 _LOGIC_REGION_KIND_ATTR = "logic.region_kind"
@@ -54,7 +55,17 @@ class _FullAdderCone:
 
 
 def _build_value_names(func_op: FuncOp) -> dict:
+    input_ports_attr = func_op.attributes.get("logic.input_ports")
+    if not isinstance(input_ports_attr, ArrayAttr):
+        raise AssertionError(f"{func_op.sym_name.data} is missing logic.input_ports")
     value_names = {}
+    input_refs = [
+        ref
+        for signal in decode_signal_decls(input_ports_attr)
+        for ref in expand_signal_decl_refs(signal)
+    ]
+    for arg, ref in zip(func_op.args, input_refs):
+        value_names[arg] = ref
     for op in func_op.body.block.ops:
         if isinstance(op, InputPortOp):
             value_names[op.output] = require_wire_name(op.output)

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from xdsl.dialects.builtin import ArrayAttr, IntAttr, StringAttr
+from xdsl.dialects.builtin import IntAttr, StringAttr
 from xdsl.ir import Dialect, SSAValue
 from xdsl.irdl import (
     IRDLOperation,
@@ -15,16 +15,6 @@ from xdsl.irdl import (
 )
 
 from ...ir import WireType, bit_wire_type, wire_type
-
-
-def _encode_port_names(port_names: list[str]) -> ArrayAttr[StringAttr]:
-    return ArrayAttr(StringAttr(port_name) for port_name in port_names)
-
-
-def decode_port_names(attr: ArrayAttr[StringAttr]) -> list[str]:
-    return [item.data for item in attr]
-
-
 def _named_result_types(
     result_type: WireType | None,
     *names: str,
@@ -74,14 +64,12 @@ class And2Op(IRDLOperation):
     lhs = operand_def(WireType)
     rhs = operand_def(WireType)
     instance_name = prop_def(StringAttr)
-    region_kind = prop_def(StringAttr)
     output = result_def(WireType)
 
     def __init__(
         self,
         *,
         instance_name: str,
-        region_kind: str,
         output_name: str,
         lhs: SSAValue,
         rhs: SSAValue,
@@ -91,7 +79,6 @@ class And2Op(IRDLOperation):
             operands=(lhs, rhs),
             properties={
                 "instance_name": StringAttr(instance_name),
-                "region_kind": StringAttr(region_kind),
             },
             result_types=(_named_result_types(wire_type_, output_name)[0],),
         )
@@ -104,14 +91,12 @@ class Or2Op(IRDLOperation):
     lhs = operand_def(WireType)
     rhs = operand_def(WireType)
     instance_name = prop_def(StringAttr)
-    region_kind = prop_def(StringAttr)
     output = result_def(WireType)
 
     def __init__(
         self,
         *,
         instance_name: str,
-        region_kind: str,
         output_name: str,
         lhs: SSAValue,
         rhs: SSAValue,
@@ -121,7 +106,6 @@ class Or2Op(IRDLOperation):
             operands=(lhs, rhs),
             properties={
                 "instance_name": StringAttr(instance_name),
-                "region_kind": StringAttr(region_kind),
             },
             result_types=(_named_result_types(wire_type_, output_name)[0],),
         )
@@ -134,14 +118,12 @@ class Xor2Op(IRDLOperation):
     lhs = operand_def(WireType)
     rhs = operand_def(WireType)
     instance_name = prop_def(StringAttr)
-    region_kind = prop_def(StringAttr)
     output = result_def(WireType)
 
     def __init__(
         self,
         *,
         instance_name: str,
-        region_kind: str,
         output_name: str,
         lhs: SSAValue,
         rhs: SSAValue,
@@ -151,7 +133,6 @@ class Xor2Op(IRDLOperation):
             operands=(lhs, rhs),
             properties={
                 "instance_name": StringAttr(instance_name),
-                "region_kind": StringAttr(region_kind),
             },
             result_types=(_named_result_types(wire_type_, output_name)[0],),
         )
@@ -165,14 +146,12 @@ class Ao21Op(IRDLOperation):
     and_rhs = operand_def(WireType)
     or_rhs = operand_def(WireType)
     instance_name = prop_def(StringAttr)
-    region_kind = prop_def(StringAttr)
     output = result_def(WireType)
 
     def __init__(
         self,
         *,
         instance_name: str,
-        region_kind: str,
         output_name: str,
         and_lhs: SSAValue,
         and_rhs: SSAValue,
@@ -183,7 +162,6 @@ class Ao21Op(IRDLOperation):
             operands=(and_lhs, and_rhs, or_rhs),
             properties={
                 "instance_name": StringAttr(instance_name),
-                "region_kind": StringAttr(region_kind),
             },
             result_types=(_named_result_types(wire_type_, output_name)[0],),
         )
@@ -197,7 +175,6 @@ class FullAdderOp(IRDLOperation):
     rhs = operand_def(WireType)
     cin = operand_def(WireType)
     instance_name = prop_def(StringAttr)
-    region_kind = prop_def(StringAttr)
     sum_out = result_def(WireType)
     carry_out = result_def(WireType)
 
@@ -205,7 +182,6 @@ class FullAdderOp(IRDLOperation):
         self,
         *,
         instance_name: str,
-        region_kind: str,
         sum_name: str,
         carry_name: str,
         lhs: SSAValue,
@@ -217,7 +193,6 @@ class FullAdderOp(IRDLOperation):
             operands=(lhs, rhs, cin),
             properties={
                 "instance_name": StringAttr(instance_name),
-                "region_kind": StringAttr(region_kind),
             },
             result_types=_named_result_types(wire_type_, sum_name, carry_name),
         )
@@ -230,7 +205,6 @@ class HalfAdderOp(IRDLOperation):
     lhs = operand_def(WireType)
     rhs = operand_def(WireType)
     instance_name = prop_def(StringAttr)
-    region_kind = prop_def(StringAttr)
     sum_out = result_def(WireType)
     carry_out = result_def(WireType)
 
@@ -238,7 +212,6 @@ class HalfAdderOp(IRDLOperation):
         self,
         *,
         instance_name: str,
-        region_kind: str,
         sum_name: str,
         carry_name: str,
         lhs: SSAValue,
@@ -249,7 +222,6 @@ class HalfAdderOp(IRDLOperation):
             operands=(lhs, rhs),
             properties={
                 "instance_name": StringAttr(instance_name),
-                "region_kind": StringAttr(region_kind),
             },
             result_types=_named_result_types(wire_type_, sum_name, carry_name),
         )
@@ -262,9 +234,6 @@ class InstanceOp(IRDLOperation):
     inputs = var_operand_def(WireType)
     instance_name = prop_def(StringAttr)
     callee = prop_def(StringAttr)
-    region_kind = prop_def(StringAttr)
-    input_ports = prop_def(ArrayAttr[StringAttr])
-    output_ports = prop_def(ArrayAttr[StringAttr])
     outputs = var_result_def(WireType)
 
     def __init__(
@@ -272,10 +241,7 @@ class InstanceOp(IRDLOperation):
         *,
         instance_name: str,
         callee: str,
-        region_kind: str,
-        input_ports: list[str],
         inputs: list[SSAValue],
-        output_ports: list[str],
         output_types: list[WireType],
     ) -> None:
         super().__init__(
@@ -283,9 +249,6 @@ class InstanceOp(IRDLOperation):
             properties={
                 "instance_name": StringAttr(instance_name),
                 "callee": StringAttr(callee),
-                "region_kind": StringAttr(region_kind),
-                "input_ports": _encode_port_names(input_ports),
-                "output_ports": _encode_port_names(output_ports),
             },
             result_types=[output_types],
         )

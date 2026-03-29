@@ -1,9 +1,11 @@
 // RUN: compiler-opt --pass lower-arith-to-logic --pass verify-post-arith-to-logic
 // CHECK: instance_name = "compressor_tree_0_inst"
 // CHECK: callee = "mac16x16p32__compressor_tree_0"
-// CHECK: "logic.input"() : () -> !rtl.wire<"pp_0_1":1>
+// CHECK: ^bb0(
+// CHECK: !rtl.wire<"pp_0_1":1>
 // CHECK: "logic.half_adder"(
 // CHECK: "logic.constant"() {value = "1'b0"}
+// CHECK: "func.return"(
 // CHECK: logic.region_kind = "arith.compressor_tree"
 // CHECK: sym_name = "mac16x16p32__compressor_tree_0"
 // CHECK: sym_visibility = "private"

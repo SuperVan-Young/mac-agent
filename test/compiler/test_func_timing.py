@@ -16,8 +16,8 @@ def test_hierarchical_input_arrival_propagation_changes_critical_instances() -> 
 "builtin.module"() ({
   %0 = "logic.input"() : () -> !rtl.wire<"A":1>
   %1 = "logic.input"() : () -> !rtl.wire<"B":1>
-  %2, %3 = "logic.instance"(%0, %1) {instance_name = "stage0_inst", callee = "stage0", region_kind = "stage0", input_ports = ["A", "B"], output_ports = ["X", "Y"]} : (!rtl.wire<"A":1>, !rtl.wire<"B":1>) -> (!rtl.wire<"X":1>, !rtl.wire<"Y":1>)
-  %4, %5 = "logic.instance"(%2, %3) {instance_name = "stage1_inst", callee = "stage1", region_kind = "stage1", input_ports = ["X", "Y"], output_ports = ["D0", "D1"]} : (!rtl.wire<"X":1>, !rtl.wire<"Y":1>) -> (!rtl.wire<"D0":1>, !rtl.wire<"D1":1>)
+  %2, %3 = "logic.instance"(%0, %1) {instance_name = "stage0_inst", callee = "stage0"} : (!rtl.wire<"A":1>, !rtl.wire<"B":1>) -> (!rtl.wire<"X":1>, !rtl.wire<"Y":1>)
+  %4, %5 = "logic.instance"(%2, %3) {instance_name = "stage1_inst", callee = "stage1"} : (!rtl.wire<"X":1>, !rtl.wire<"Y":1>) -> (!rtl.wire<"D0":1>, !rtl.wire<"D1":1>)
   "func.func"() ({
     %6 = "logic.input"() : () -> !rtl.wire<"A":1>
     %7 = "logic.input"() : () -> !rtl.wire<"B":1>

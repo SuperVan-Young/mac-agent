@@ -160,7 +160,6 @@ class FullAdderOp(IRDLOperation):
     cin = operand_def(WireType)
     instance_name = prop_def(StringAttr)
     impl_type = prop_def(StringAttr)
-    region_kind = prop_def(StringAttr)
     sum_out = result_def(WireType)
     carry_out = result_def(WireType)
 
@@ -169,7 +168,6 @@ class FullAdderOp(IRDLOperation):
         *,
         instance_name: str,
         impl_type: str,
-        region_kind: str,
         sum_name: str,
         carry_name: str,
         lhs: SSAValue,
@@ -182,7 +180,6 @@ class FullAdderOp(IRDLOperation):
             properties={
                 "instance_name": StringAttr(instance_name),
                 "impl_type": StringAttr(impl_type),
-                "region_kind": StringAttr(region_kind),
             },
             result_types=_named_result_types(wire_type_, sum_name, carry_name),
         )
@@ -196,7 +193,6 @@ class HalfAdderOp(IRDLOperation):
     rhs = operand_def(WireType)
     instance_name = prop_def(StringAttr)
     impl_type = prop_def(StringAttr)
-    region_kind = prop_def(StringAttr)
     sum_out = result_def(WireType)
     carry_out = result_def(WireType)
 
@@ -205,7 +201,6 @@ class HalfAdderOp(IRDLOperation):
         *,
         instance_name: str,
         impl_type: str,
-        region_kind: str,
         sum_name: str,
         carry_name: str,
         lhs: SSAValue,
@@ -217,7 +212,6 @@ class HalfAdderOp(IRDLOperation):
             properties={
                 "instance_name": StringAttr(instance_name),
                 "impl_type": StringAttr(impl_type),
-                "region_kind": StringAttr(region_kind),
             },
             result_types=_named_result_types(wire_type_, sum_name, carry_name),
         )

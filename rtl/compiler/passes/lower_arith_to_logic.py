@@ -9,7 +9,7 @@ import re
 from xdsl.context import Context
 from xdsl.dialects.builtin import ModuleOp, StringAttr
 from xdsl.dialects.func import FuncOp, ReturnOp
-from xdsl.ir import Block, Region, SSAValue
+from xdsl.ir import SSAValue
 from xdsl.passes import ModulePass
 from xdsl.pattern_rewriter import (
     PatternRewriter,
@@ -25,12 +25,10 @@ from ..dialects.logic import (
     ConstantOp,
     FullAdderOp,
     HalfAdderOp,
-    InputPortOp,
     InstanceOp,
-    OutputPortOp,
     Xor2Op,
 )
-from ..ir import bit_wire_type, get_wire_width, require_wire_name, wire_type
+from ..ir import bit_wire_type, expand_signal_decl_refs, get_wire_width, require_wire_name, wire_type
 from ..signals import SignalDecl, encode_signal_decls
 from .lower_multiplier_to_arith_parts import _plan_compressor_tree
 
@@ -87,26 +85,26 @@ def _build_port_decls_from_values(values: list[SSAValue], *, kind: str) -> list[
 
 
 class _LogicRegionBuilder:
-    def __init__(self, input_ports: list[SignalDecl], output_ports: list[SignalDecl]) -> None:
+    def __init__(
+        self,
+        input_ports: list[SignalDecl],
+        output_ports: list[SignalDecl],
+        block_args: tuple[SSAValue, ...],
+    ) -> None:
         self.input_ports = input_ports
         self.output_ports = output_ports
+        self.input_refs = [ref for signal in input_ports for ref in expand_signal_decl_refs(signal)]
+        self.output_refs = [ref for signal in output_ports for ref in expand_signal_decl_refs(signal)]
         self.ops: list = []
         self.values: dict[str, SSAValue] = {}
         self.constants: dict[str, SSAValue] = {}
-        self._seed_inputs()
+        self._seed_inputs(block_args)
 
-    def _seed_inputs(self) -> None:
-        for signal in self.input_ports:
-            if signal.width == 1:
-                op = InputPortOp(port_name=signal.name)
-                self.ops.append(op)
-                self.values[signal.name] = op.output
-                continue
-            for bit in range(signal.width):
-                ref = f"{signal.name}[{bit}]"
-                op = InputPortOp(port_name=ref)
-                self.ops.append(op)
-                self.values[ref] = op.output
+    def _seed_inputs(self, block_args: tuple[SSAValue, ...]) -> None:
+        if len(block_args) != len(self.input_refs):
+            raise AssertionError("Function block arguments do not match expanded input refs")
+        for ref, arg in zip(self.input_refs, block_args):
+            self.values[ref] = arg
 
     def get(self, signal: str) -> SSAValue:
         if signal in self.values:
@@ -125,13 +123,7 @@ class _LogicRegionBuilder:
         self.values[signal] = value
 
     def finish(self) -> list:
-        for signal in self.output_ports:
-            if signal.width == 1:
-                self.ops.append(OutputPortOp(value=self.get(signal.name)))
-                continue
-            for bit in range(signal.width):
-                self.ops.append(OutputPortOp(value=self.get(f"{signal.name}[{bit}]")))
-        return [*self.ops, ReturnOp()]
+        return [*self.ops, ReturnOp(*(self.get(ref) for ref in self.output_refs))]
 
 
 def _make_logic_region_func(
@@ -140,10 +132,17 @@ def _make_logic_region_func(
     region_kind: str,
     input_ports: list[SignalDecl],
     output_ports: list[SignalDecl],
-    body_ops: list,
-) -> FuncOp:
-    body = Region(Block(body_ops))
-    func_op = FuncOp(func_name, ((), ()), region=body, visibility="private")
+ ) -> FuncOp:
+    input_refs = [ref for signal in input_ports for ref in expand_signal_decl_refs(signal)]
+    output_refs = [ref for signal in output_ports for ref in expand_signal_decl_refs(signal)]
+    func_op = FuncOp(
+        func_name,
+        (
+            [bit_wire_type(name=ref) for ref in input_refs],
+            [bit_wire_type(name=ref) for ref in output_refs],
+        ),
+        visibility="private",
+    )
     func_op.attributes[_LOGIC_REGION_KIND_ATTR] = StringAttr(region_kind)
     func_op.attributes[_LOGIC_INPUT_PORTS_ATTR] = encode_signal_decls(input_ports)
     func_op.attributes[_LOGIC_OUTPUT_PORTS_ATTR] = encode_signal_decls(output_ports)
@@ -154,19 +153,13 @@ def _make_instance_op(
     *,
     instance_name: str,
     callee: str,
-    region_kind: str,
     inputs: list[SSAValue],
-    input_names: list[str],
-    output_names: list[str],
     output_types: list,
 ) -> InstanceOp:
     return InstanceOp(
         instance_name=instance_name,
         callee=callee,
-        region_kind=region_kind,
-        input_ports=input_names,
         inputs=inputs,
-        output_ports=output_names,
         output_types=output_types,
     )
 
@@ -218,10 +211,16 @@ class LowerPartialProductGeneratorPattern(RewritePattern):
             raise AssertionError(f"Expected two PPG input bases, got {base_names}")
         lhs_base, rhs_base = base_names
 
-        builder = _LogicRegionBuilder(
-            _build_port_decls(input_names, kind="input"),
-            _build_port_decls_from_values(list(op.results), kind="output"),
+        input_ports = _build_port_decls(input_names, kind="input")
+        output_ports = _build_port_decls_from_values(list(op.results), kind="output")
+        func_name, instance_name = self.name_allocator.allocate(op.owner.data)
+        func_op = _make_logic_region_func(
+            func_name=func_name,
+            region_kind=op.owner.data,
+            input_ports=input_ports,
+            output_ports=output_ports,
         )
+        builder = _LogicRegionBuilder(input_ports, output_ports, func_op.args)
         for index, output_name in enumerate(output_names):
             match = _PP_NAME_RE.match(output_name)
             if match is None:
@@ -230,7 +229,6 @@ class LowerPartialProductGeneratorPattern(RewritePattern):
             rhs = builder.get(f"{rhs_base}[{int(match.group('rhs'))}]")
             and2 = And2Op(
                 instance_name=f"ppg_and2_{index}",
-                region_kind="partial_product_generator",
                 output_name=output_name,
                 lhs=lhs,
                 rhs=rhs,
@@ -238,21 +236,12 @@ class LowerPartialProductGeneratorPattern(RewritePattern):
             builder.ops.append(and2)
             builder.bind(output_name, and2.output)
 
-        func_name, instance_name = self.name_allocator.allocate(op.owner.data)
-        func_op = _make_logic_region_func(
-            func_name=func_name,
-            region_kind=op.owner.data,
-            input_ports=builder.input_ports,
-            output_ports=builder.output_ports,
-            body_ops=builder.finish(),
-        )
+        for inner_op in builder.finish():
+            func_op.body.block.add_op(inner_op)
         instance_op = _make_instance_op(
             instance_name=instance_name,
             callee=func_name,
-            region_kind=op.owner.data,
             inputs=[input_map[name] for name in input_names],
-            input_names=input_names,
-            output_names=output_names,
             output_types=[result.type for result in op.results],
         )
         rewriter.replace_matched_op([instance_op, func_op], new_results=tuple(instance_op.outputs), safe_erase=True)
@@ -286,12 +275,18 @@ class LowerCompressorTreeToLogicPattern(RewritePattern):
         stage_ops, lhs_row, rhs_row = _plan_compressor_tree(dict(columns))
         input_ports = _build_port_decls(input_names, kind="input")
         output_ports = _build_port_decls_from_values(list(op.results), kind="output")
-        builder = _LogicRegionBuilder(input_ports, output_ports)
-        for kind, instance_name, lhs, rhs, cin, sum_out, carry_out in stage_ops:
+        func_name, instance_name = self.name_allocator.allocate(op.owner.data)
+        func_op = _make_logic_region_func(
+            func_name=func_name,
+            region_kind=op.owner.data,
+            input_ports=input_ports,
+            output_ports=output_ports,
+        )
+        builder = _LogicRegionBuilder(input_ports, output_ports, func_op.args)
+        for kind, gate_instance_name, lhs, rhs, cin, sum_out, carry_out in stage_ops:
             if kind == "fa":
                 fa = FullAdderOp(
-                    instance_name=instance_name,
-                    region_kind="compressor_tree",
+                    instance_name=gate_instance_name,
                     sum_name=sum_out,
                     carry_name=carry_out,
                     lhs=builder.get(lhs),
@@ -304,8 +299,7 @@ class LowerCompressorTreeToLogicPattern(RewritePattern):
                 continue
             if kind == "ha":
                 ha = HalfAdderOp(
-                    instance_name=instance_name,
-                    region_kind="compressor_tree",
+                    instance_name=gate_instance_name,
                     sum_name=sum_out,
                     carry_name=carry_out,
                     lhs=builder.get(lhs),
@@ -327,21 +321,12 @@ class LowerCompressorTreeToLogicPattern(RewritePattern):
             for bit in range(signal.width):
                 builder.bind(f"{signal.name}[{bit}]", builder.get(row.get(bit, "1'b0")))
 
-        func_name, instance_name = self.name_allocator.allocate(op.owner.data)
-        func_op = _make_logic_region_func(
-            func_name=func_name,
-            region_kind=op.owner.data,
-            input_ports=builder.input_ports,
-            output_ports=builder.output_ports,
-            body_ops=builder.finish(),
-        )
+        for inner_op in builder.finish():
+            func_op.body.block.add_op(inner_op)
         instance_op = _make_instance_op(
             instance_name=instance_name,
             callee=func_name,
-            region_kind=op.owner.data,
             inputs=[input_map[name] for name in input_names],
-            input_names=input_names,
-            output_names=[signal.name for signal in output_ports],
             output_types=[result.type for result in op.results],
         )
         rewriter.replace_matched_op([instance_op, func_op], new_results=tuple(instance_op.outputs), safe_erase=True)
@@ -365,7 +350,6 @@ class LowerPrefixTreeToLogicPattern(RewritePattern):
             carry_out = f"pt_overflow_{bit + 1}" if bit == max_bit else f"pt_carry_{bit + 1}"
             fa = FullAdderOp(
                 instance_name=f"pt_b{bit}_fa",
-                region_kind="prefix_tree",
                 sum_name=f"{output_base}[{bit}]",
                 carry_name=carry_out,
                 lhs=builder.get(lhs_row.get(bit, "1'b0")),
@@ -398,14 +382,12 @@ class LowerPrefixTreeToLogicPattern(RewritePattern):
             generate_wire = f"pt_g_{bit}"
             xor_p = Xor2Op(
                 instance_name=f"pt_b{bit}_xor_p",
-                region_kind="prefix_tree",
                 output_name=propagate_wire,
                 lhs=lhs,
                 rhs=rhs,
             )
             and_g = And2Op(
                 instance_name=f"pt_b{bit}_and_g",
-                region_kind="prefix_tree",
                 output_name=generate_wire,
                 lhs=lhs,
                 rhs=rhs,
@@ -427,14 +409,12 @@ class LowerPrefixTreeToLogicPattern(RewritePattern):
                 merged_generate = f"pt_s{stage}_g_{bit}"
                 and_p = And2Op(
                     instance_name=f"pt_s{stage}_and_p_{bit}",
-                    region_kind="prefix_tree",
                     output_name=merged_propagate,
                     lhs=current_propagate[bit],
                     rhs=current_propagate[bit - span],
                 )
                 ao21_g = Ao21Op(
                     instance_name=f"pt_s{stage}_ao21_g_{bit}",
-                    region_kind="prefix_tree",
                     output_name=merged_generate,
                     and_lhs=current_propagate[bit],
                     and_rhs=current_generate[bit - span],
@@ -454,7 +434,6 @@ class LowerPrefixTreeToLogicPattern(RewritePattern):
             carry_in = builder.get("1'b0") if bit == 0 else current_generate[bit - 1]
             xor_sum = Xor2Op(
                 instance_name=f"pt_b{bit}_xor_sum",
-                region_kind="prefix_tree",
                 output_name=f"{output_base}[{bit}]",
                 lhs=propagate[bit],
                 rhs=carry_in,
@@ -481,7 +460,14 @@ class LowerPrefixTreeToLogicPattern(RewritePattern):
             raise AssertionError(f"Expected one prefix output bus, got {output_names}")
         output_base = output_ports[0].name
 
-        builder = _LogicRegionBuilder(input_ports, output_ports)
+        func_name, instance_name = self.name_allocator.allocate(op.owner.data)
+        func_op = _make_logic_region_func(
+            func_name=func_name,
+            region_kind=op.owner.data,
+            input_ports=input_ports,
+            output_ports=output_ports,
+        )
+        builder = _LogicRegionBuilder(input_ports, output_ports, func_op.args)
         if op.implementation.data == "ripple":
             self._lower_ripple(output_base, lhs_row, rhs_row, builder)
         elif op.implementation.data == "kogge_stone":
@@ -489,21 +475,12 @@ class LowerPrefixTreeToLogicPattern(RewritePattern):
         else:
             raise AssertionError(f"Unsupported prefix tree implementation {op.implementation.data!r}")
 
-        func_name, instance_name = self.name_allocator.allocate(op.owner.data)
-        func_op = _make_logic_region_func(
-            func_name=func_name,
-            region_kind=op.owner.data,
-            input_ports=builder.input_ports,
-            output_ports=builder.output_ports,
-            body_ops=builder.finish(),
-        )
+        for inner_op in builder.finish():
+            func_op.body.block.add_op(inner_op)
         instance_op = _make_instance_op(
             instance_name=instance_name,
             callee=func_name,
-            region_kind=op.owner.data,
             inputs=[input_map[name] for name in input_names],
-            input_names=input_names,
-            output_names=[signal.name for signal in output_ports],
             output_types=[result.type for result in op.results],
         )
         rewriter.replace_matched_op([instance_op, func_op], new_results=tuple(instance_op.outputs), safe_erase=True)

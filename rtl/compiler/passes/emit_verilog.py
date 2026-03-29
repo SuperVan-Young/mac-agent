@@ -9,7 +9,7 @@ from xdsl.dialects.builtin import ArrayAttr, ModuleOp, StringAttr
 from xdsl.dialects.func import FuncOp, ReturnOp
 
 from ..dialects.asap7 import And2Op, Ao21Op, FullAdderOp, HalfAdderOp, Or2Op, Xor2Op
-from ..dialects.logic import ConstantOp, InputPortOp, InstanceOp, OutputPortOp, decode_port_names
+from ..dialects.logic import ConstantOp, InputPortOp, InstanceOp, OutputPortOp
 from ..ir import get_wire_width, require_wire_name
 from ..signals import SignalDecl, decode_signal_decls
 
@@ -48,6 +48,11 @@ def _read_func_signature(func_op: FuncOp) -> tuple[str, list[SignalDecl], list[S
         decode_signal_decls(input_ports_attr),
         decode_signal_decls(output_ports_attr),
     )
+
+
+def _func_port_names(func_op: FuncOp) -> tuple[list[str], list[str]]:
+    _, input_ports, output_ports = _read_func_signature(func_op)
+    return ([signal.name for signal in input_ports], [signal.name for signal in output_ports])
 
 
 def _emit_port_decl(signal: SignalDecl) -> str:
@@ -185,6 +190,8 @@ def _emit_module(
     input_ports: list[SignalDecl],
     output_ports: list[SignalDecl],
     ops: Iterable,
+    func_signatures: dict[str, tuple[list[str], list[str]]],
+    entry_args: tuple = (),
 ) -> str:
     declared_ports = {signal.name for signal in input_ports + output_ports}
     wire_widths: dict[str, int] = {}
@@ -193,9 +200,34 @@ def _emit_module(
     value_names: dict = {}
     output_port_index = 0
     output_bit_index = 0
+    input_refs = [ref for signal in input_ports for ref in _expand_signal_decl(signal)]
+    if entry_args:
+        if len(entry_args) != len(input_refs):
+            raise AssertionError(f"{module_name} block args do not match input signature")
+        for arg, ref in zip(entry_args, input_refs):
+            value_names[arg] = ref
 
     for op in ops:
-        if isinstance(op, FuncOp | ReturnOp):
+        if isinstance(op, FuncOp):
+            continue
+        if isinstance(op, ReturnOp):
+            for value in op.arguments:
+                if output_port_index >= len(output_ports):
+                    raise AssertionError("Too many func.return values for module signature")
+                target_port = output_ports[output_port_index]
+                source = value_names[value]
+                target = (
+                    target_port.name
+                    if target_port.width == 1
+                    else f"{target_port.name}[{output_bit_index}]"
+                )
+                output_bit_index += 1
+                if output_bit_index == target_port.width:
+                    output_port_index += 1
+                    output_bit_index = 0
+                if source != target:
+                    _collect_wire_base(source, declared_ports, wire_widths)
+                    assigns.append(f"  assign {target} = {source};")
             continue
         if isinstance(op, InputPortOp):
             value_names[op.output] = require_wire_name(op.output)
@@ -229,8 +261,7 @@ def _emit_module(
                 assigns.append(f"  assign {target} = {source};")
             continue
         if isinstance(op, InstanceOp):
-            input_ports_for_op = decode_port_names(op.input_ports)
-            output_ports_for_op = decode_port_names(op.output_ports)
+            input_ports_for_op, output_ports_for_op = func_signatures[op.callee.data]
             raw_connections = _expand_grouped_port_connections(
                 input_ports_for_op,
                 [value_names[value] for value in op.inputs],
@@ -360,8 +391,21 @@ def _emit_module(
 
 def emit_verilog(module: ModuleOp) -> str:
     top_name, input_ports, output_ports = _read_module_signature(module)
+    func_signatures = {
+        func_op.sym_name.data: _func_port_names(func_op)
+        for func_op in module.ops
+        if isinstance(func_op, FuncOp)
+    }
     top_ops = [op for op in module.ops if not isinstance(op, FuncOp)]
-    lines = [_emit_module(module_name=top_name, input_ports=input_ports, output_ports=output_ports, ops=top_ops)]
+    lines = [
+        _emit_module(
+            module_name=top_name,
+            input_ports=input_ports,
+            output_ports=output_ports,
+            ops=top_ops,
+            func_signatures=func_signatures,
+        )
+    ]
 
     for op in module.ops:
         if not isinstance(op, FuncOp):
@@ -374,6 +418,8 @@ def emit_verilog(module: ModuleOp) -> str:
                 input_ports=func_inputs,
                 output_ports=func_outputs,
                 ops=op.body.block.ops,
+                func_signatures=func_signatures,
+                entry_args=op.args,
             )
         )
 

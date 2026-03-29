@@ -10,7 +10,7 @@ from xdsl.dialects.builtin import ArrayAttr, ModuleOp, StringAttr
 from xdsl.dialects.func import FuncOp
 
 from ..dialects.asap7 import And2Op, Ao21Op, Or2Op, Xor2Op
-from ..dialects.logic import ConstantOp, InputPortOp, InstanceOp, decode_port_names
+from ..dialects.logic import ConstantOp, InputPortOp, InstanceOp
 from ..ir import require_wire_name
 from ..signals import SignalDecl, decode_signal_decls
 from .liberty_model import LibertyModel
@@ -28,6 +28,11 @@ FUNC_TIMING_MAX_DELAY_ATTR = "timing.max_delay"
 _DEFAULT_INPUT_SLEW_NS = 0.005
 _NEAR_CRITICAL_MARGIN_NS = 0.02
 _TOP_PAIR_LIMIT = 4
+
+
+def _instance_port_names(func_ops: dict[str, FuncOp], op: InstanceOp) -> tuple[list[str], list[str]]:
+    _, input_ports, output_ports = _read_func_signature(func_ops[op.callee.data])
+    return ([signal.name for signal in input_ports], [signal.name for signal in output_ports])
 
 
 @dataclass(frozen=True)
@@ -118,14 +123,16 @@ def analyze_module_timing(module: ModuleOp, liberty_model: LibertyModel) -> Modu
     for op in module.ops:
         if not isinstance(op, InstanceOp):
             continue
-        for port_name, top_ref in _expand_grouped_port_refs(decode_port_names(op.input_ports), op.inputs):
+        input_port_names, _ = _instance_port_names(func_ops, op)
+        for port_name, top_ref in _expand_grouped_port_refs(input_port_names, op.inputs):
             top_net_loads[top_ref] += internal_input_loads[op.callee.data].get(port_name, 0.0)
 
     external_loads: dict[str, dict[str, float]] = {name: defaultdict(float) for name in func_ops}
     for op in module.ops:
         if not isinstance(op, InstanceOp):
             continue
-        for port_name, top_ref in _expand_grouped_port_refs(decode_port_names(op.output_ports), op.outputs):
+        _, output_port_names = _instance_port_names(func_ops, op)
+        for port_name, top_ref in _expand_grouped_port_refs(output_port_names, op.outputs):
             external_loads[op.callee.data][port_name] += top_net_loads.get(top_ref, 0.0)
 
     instance_ops = [op for op in module.ops if isinstance(op, InstanceOp)]
@@ -142,7 +149,8 @@ def analyze_module_timing(module: ModuleOp, liberty_model: LibertyModel) -> Modu
     for op in ordered_instances:
         input_arrivals_ns: dict[str, float] = {}
         input_slews_ns: dict[str, float] = {}
-        for port_name, top_ref in _expand_grouped_port_refs(decode_port_names(op.input_ports), op.inputs):
+        input_port_names, output_port_names = _instance_port_names(func_ops, op)
+        for port_name, top_ref in _expand_grouped_port_refs(input_port_names, op.inputs):
             input_arrivals_ns[port_name] = top_net_arrivals.get(top_ref, 0.0)
             input_slews_ns[port_name] = top_net_slews.get(top_ref, _DEFAULT_INPUT_SLEW_NS)
         instance_inputs[op.instance_name.data] = (input_arrivals_ns, input_slews_ns)
@@ -155,7 +163,7 @@ def analyze_module_timing(module: ModuleOp, liberty_model: LibertyModel) -> Modu
             input_slews_ns=input_slews_ns,
         )
 
-        for port_name, top_ref in _expand_grouped_port_refs(decode_port_names(op.output_ports), op.outputs):
+        for port_name, top_ref in _expand_grouped_port_refs(output_port_names, op.outputs):
             if port_name not in report.output_arrivals_ns:
                 continue
             top_net_arrivals[top_ref] = report.output_arrivals_ns[port_name]
@@ -171,7 +179,8 @@ def analyze_module_timing(module: ModuleOp, liberty_model: LibertyModel) -> Modu
     for op in reversed(ordered_instances):
         input_arrivals_ns, input_slews_ns = instance_inputs[op.instance_name.data]
         output_tail_ns: dict[str, float] = {}
-        for port_name, top_ref in _expand_grouped_port_refs(decode_port_names(op.output_ports), op.outputs):
+        input_port_names, output_port_names = _instance_port_names(func_ops, op)
+        for port_name, top_ref in _expand_grouped_port_refs(output_port_names, op.outputs):
             output_tail_ns[port_name] = top_net_tails.get(top_ref, 0.0)
 
         report = analyze_func_timing(
@@ -184,7 +193,7 @@ def analyze_module_timing(module: ModuleOp, liberty_model: LibertyModel) -> Modu
         )
         reports[op.callee.data] = report
 
-        for port_name, top_ref in _expand_grouped_port_refs(decode_port_names(op.input_ports), op.inputs):
+        for port_name, top_ref in _expand_grouped_port_refs(input_port_names, op.inputs):
             top_net_tails[top_ref] = max(
                 top_net_tails.get(top_ref, 0.0),
                 report.input_tails_ns.get(port_name, 0.0),
@@ -432,7 +441,9 @@ def _expand_grouped_port_refs(port_names: list[str], values) -> list[tuple[str, 
 
 def _iter_gate_arcs(func_op: FuncOp) -> list[GateArc]:
     arcs: list[GateArc] = []
-    value_names: dict = {}
+    _, input_ports, _ = _read_func_signature(func_op)
+    input_refs = [ref for signal in input_ports for ref in _expand_signal_decl(signal)]
+    value_names: dict = {arg: ref for arg, ref in zip(func_op.args, input_refs)}
     for op in func_op.body.block.ops:
         if isinstance(op, InputPortOp):
             value_names[op.output] = require_wire_name(op.output)

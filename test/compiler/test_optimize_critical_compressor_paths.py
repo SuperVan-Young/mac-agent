@@ -16,9 +16,9 @@ def test_critical_compressor_rebinds_latest_input_to_cin() -> None:
   %2 = "logic.input"() : () -> !rtl.wire<"C":1>
   %3 = "logic.input"() : () -> !rtl.wire<"D":1>
   %4 = "logic.input"() : () -> !rtl.wire<"SKEW_SEED":1>
-  %5 = "logic.instance"(%0, %4) {instance_name = "skew_stage_0_inst", callee = "skew_stage_0", region_kind = "skew_stage", input_ports = ["X", "Y"], output_ports = ["A"]} : (!rtl.wire<"X":1>, !rtl.wire<"SKEW_SEED":1>) -> !rtl.wire<"A":1>
-  %6, %7 = "logic.instance"(%5, %1, %2, %3) {instance_name = "compressor_tree_0_inst", callee = "compressor_tree_0", region_kind = "arith.compressor_tree", input_ports = ["A", "B", "C", "D"], output_ports = ["SUM", "CARRY"]} : (!rtl.wire<"A":1>, !rtl.wire<"B":1>, !rtl.wire<"C":1>, !rtl.wire<"D":1>) -> (!rtl.wire<"SUM":1>, !rtl.wire<"CARRY":1>)
-  %8 = "logic.instance"(%6, %7) {instance_name = "prefix_tree_0_inst", callee = "prefix_tree_0", region_kind = "arith.prefix_tree", input_ports = ["SUM", "CARRY"], output_ports = ["Y"]} : (!rtl.wire<"SUM":1>, !rtl.wire<"CARRY":1>) -> !rtl.wire<"Y":1>
+  %5 = "logic.instance"(%0, %4) {instance_name = "skew_stage_0_inst", callee = "skew_stage_0"} : (!rtl.wire<"X":1>, !rtl.wire<"SKEW_SEED":1>) -> !rtl.wire<"A":1>
+  %6, %7 = "logic.instance"(%5, %1, %2, %3) {instance_name = "compressor_tree_0_inst", callee = "compressor_tree_0"} : (!rtl.wire<"A":1>, !rtl.wire<"B":1>, !rtl.wire<"C":1>, !rtl.wire<"D":1>) -> (!rtl.wire<"SUM":1>, !rtl.wire<"CARRY":1>)
+  %8 = "logic.instance"(%6, %7) {instance_name = "prefix_tree_0_inst", callee = "prefix_tree_0"} : (!rtl.wire<"SUM":1>, !rtl.wire<"CARRY":1>) -> !rtl.wire<"Y":1>
   "func.func"() ({
     %9 = "logic.input"() : () -> !rtl.wire<"X":1>
     %10 = "logic.input"() : () -> !rtl.wire<"Y":1>
