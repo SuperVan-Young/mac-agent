@@ -431,6 +431,24 @@
         "area": 166.0,
         "cell_count": 1538
       }
+    },
+    {
+      "iteration": 23,
+      "metadata": {
+        "source": "agent",
+        "dut": "mac16x16p32.v",
+        "top_module": "mac16x16p32",
+        "comment": "Observed that the compressor-tree critical path still lacked a global-design-aware local rewrite stage; added a reusable ASAP7-IR timing-guided compressor optimization pass that iteratively rebinds the latest-arriving full-adder input onto cin using whole-design arrival and tail analysis, then searched 0/1/2/3/4/8 iteration budgets and selected 3 as the best efficiency-QoR tradeoff; this preserved correctness and area while improving critical_delay from 0.6283 to 0.6275 and wns from 0.2717 to 0.2725."
+      },
+      "result_summary": {
+        "correctness": "pass",
+        "timing_status": "pass",
+        "wns": 0.2725,
+        "tns": 0.0,
+        "critical_delay": 0.6275,
+        "area": 166.0,
+        "cell_count": 1538
+      }
     }
   ]
 }

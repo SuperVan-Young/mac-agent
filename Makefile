@@ -54,6 +54,7 @@ print-config:
 	  "GENERATED_IR=$(GENERATED_IR)" \
 	  "GENERATE_INPUT_MLIR=$(GENERATE_INPUT_MLIR)" \
 	  "GENERATE_DUMP_IR=$(GENERATE_DUMP_IR)" \
+	  "COMPRESSOR_OPT_ITERS=$(COMPRESSOR_OPT_ITERS)" \
 	  "FLOW_RESULTS_ROOT=$(FLOW_RESULTS_ROOT)" \
 	  "SCHEDULER_INSPECT_PATH=$(FLOW_RESULTS_ROOT)" \
 	  "EVAL_NETLIST=$(EVAL_NETLIST)" \
@@ -84,15 +85,15 @@ ifeq ($(GENERATE_ENABLE),1)
 	@if [ "$(GENERATE_DUMP_IR)" = "1" ]; then \
 	  mkdir -p "$(dir $(GENERATED_IR))"; \
 	  if [ -n "$(GENERATE_INPUT_MLIR)" ]; then \
-	    conda run -p "$(OPENROAD_CONDA_PREFIX)" python "$(RTL_GENERATOR)" --input-mlir "$(GENERATE_INPUT_MLIR)" --output-verilog "$(DUT)" --output-ir "$(GENERATED_IR)" --top-name "$(TOP_MODULE)"; \
+	    conda run -p "$(OPENROAD_CONDA_PREFIX)" python "$(RTL_GENERATOR)" --compressor-opt-iterations "$(COMPRESSOR_OPT_ITERS)" --input-mlir "$(GENERATE_INPUT_MLIR)" --output-verilog "$(DUT)" --output-ir "$(GENERATED_IR)" --top-name "$(TOP_MODULE)"; \
 	  else \
-	    conda run -p "$(OPENROAD_CONDA_PREFIX)" python "$(RTL_GENERATOR)" --output-verilog "$(DUT)" --output-ir "$(GENERATED_IR)" --top-name "$(TOP_MODULE)"; \
+	    conda run -p "$(OPENROAD_CONDA_PREFIX)" python "$(RTL_GENERATOR)" --compressor-opt-iterations "$(COMPRESSOR_OPT_ITERS)" --output-verilog "$(DUT)" --output-ir "$(GENERATED_IR)" --top-name "$(TOP_MODULE)"; \
 	  fi; \
 	else \
 	  if [ -n "$(GENERATE_INPUT_MLIR)" ]; then \
-	    conda run -p "$(OPENROAD_CONDA_PREFIX)" python "$(RTL_GENERATOR)" --input-mlir "$(GENERATE_INPUT_MLIR)" --output-verilog "$(DUT)" --top-name "$(TOP_MODULE)"; \
+	    conda run -p "$(OPENROAD_CONDA_PREFIX)" python "$(RTL_GENERATOR)" --compressor-opt-iterations "$(COMPRESSOR_OPT_ITERS)" --input-mlir "$(GENERATE_INPUT_MLIR)" --output-verilog "$(DUT)" --top-name "$(TOP_MODULE)"; \
 	  else \
-	    conda run -p "$(OPENROAD_CONDA_PREFIX)" python "$(RTL_GENERATOR)" --output-verilog "$(DUT)" --top-name "$(TOP_MODULE)"; \
+	    conda run -p "$(OPENROAD_CONDA_PREFIX)" python "$(RTL_GENERATOR)" --compressor-opt-iterations "$(COMPRESSOR_OPT_ITERS)" --output-verilog "$(DUT)" --top-name "$(TOP_MODULE)"; \
 	  fi; \
 	fi
 else

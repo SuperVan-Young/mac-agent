@@ -56,6 +56,9 @@ class FuncTimingReport:
     output_slews_ns: dict[str, float] = field(default_factory=dict)
     input_tails_ns: dict[str, float] = field(default_factory=dict)
     instance_scores_ns: dict[str, float] = field(default_factory=dict)
+    signal_arrivals_ns: dict[str, float] = field(default_factory=dict)
+    signal_tails_ns: dict[str, float] = field(default_factory=dict)
+    signal_scores_ns: dict[str, float] = field(default_factory=dict)
 
     @property
     def max_delay_ns(self) -> float:
@@ -352,6 +355,12 @@ def analyze_func_timing(
         },
         input_tails_ns={ref: reverse_tails.get(ref, 0.0) for ref in input_refs},
         instance_scores_ns=instance_scores_ns,
+        signal_arrivals_ns=dict(arrivals),
+        signal_tails_ns=dict(reverse_tails),
+        signal_scores_ns={
+            signal: arrivals.get(signal, 0.0) + reverse_tails.get(signal, 0.0)
+            for signal in set(arrivals) | set(reverse_tails)
+        },
     )
 
 
@@ -538,6 +547,7 @@ def _iter_gate_arcs(func_op: FuncOp) -> list[GateArc]:
                     ),
                 )
             )
+            continue
     return arcs
 
 

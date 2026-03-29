@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 from pathlib import Path
 import sys
 
@@ -19,12 +20,14 @@ DEFAULT_PASSES = (
     "lower-arith-to-logic",
     "verify-post-arith-to-logic",
     "lower-logic-to-asap7",
+    "optimize-critical-compressor-paths",
     "annotate-func-port-criticality",
     "region-scoped-cell-sizing",
     "verify-post-logic-to-physical",
 )
 
 DEFAULT_TOP = "mac16x16p32"
+DEFAULT_COMPRESSOR_OPT_ITERATIONS = 3
 
 
 def _build_default_mlir(top_name: str) -> str:
@@ -57,7 +60,17 @@ def main() -> int:
         default=DEFAULT_TOP,
         help="Top module name for the built-in canonical MAC front-end.",
     )
+    parser.add_argument(
+        "--compressor-opt-iterations",
+        type=int,
+        default=DEFAULT_COMPRESSOR_OPT_ITERATIONS,
+        help="Maximum ASAP7 compressor critical-path rewrite iterations.",
+    )
     args = parser.parse_args()
+    if args.compressor_opt_iterations < 0:
+        raise AssertionError("--compressor-opt-iterations must be non-negative")
+
+    os.environ["MAC_AGENT_COMPRESSOR_OPT_MAX_ITERATIONS"] = str(args.compressor_opt_iterations)
 
     if args.input_mlir is not None:
         result = compile_file(args.input_mlir, DEFAULT_PASSES)
