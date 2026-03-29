@@ -9,7 +9,7 @@ from xdsl.dialects.builtin import ArrayAttr, ModuleOp, StringAttr
 from xdsl.dialects.func import FuncOp, ReturnOp
 
 from ..dialects.asap7 import And2Op, Ao21Op, FullAdderOp, HalfAdderOp, Or2Op, Xor2Op
-from ..dialects.logic import InstanceOp, decode_connections
+from ..dialects.logic import ConstantOp, InputPortOp, InstanceOp, OutputPortOp, decode_connections
 from ..signals import SignalDecl, decode_signal_decls
 
 
@@ -93,9 +93,23 @@ def _emit_module(
     declared_ports = {signal.name for signal in input_ports + output_ports}
     wire_widths: dict[str, int] = {}
     instances: list[str] = []
+    assigns: list[str] = []
+    value_names = {}
 
     for op in ops:
         if isinstance(op, FuncOp | ReturnOp):
+            continue
+        if isinstance(op, InputPortOp):
+            value_names[op.output] = op.port_name.data
+            continue
+        if isinstance(op, ConstantOp):
+            value_names[op.output] = op.value.data
+            continue
+        if isinstance(op, OutputPortOp):
+            source = value_names[op.value]
+            if source != op.port_name.data:
+                _collect_wire_base(source, declared_ports, wire_widths)
+                assigns.append(f"  assign {op.port_name.data} = {source};")
             continue
         if isinstance(op, InstanceOp):
             input_connections = decode_connections(op.input_connections)
@@ -111,57 +125,80 @@ def _emit_module(
             )
             continue
         if isinstance(op, And2Op):
-            _collect_wire_base(op.output.data, declared_ports, wire_widths)
-            _collect_wire_base(op.lhs.data, declared_ports, wire_widths)
-            _collect_wire_base(op.rhs.data, declared_ports, wire_widths)
-            instances.append(
-                f"  {op.cell.data} {op.instance_name.data}({op.output.data}, {op.lhs.data}, {op.rhs.data});"
-            )
+            output = op.output_name.data
+            lhs = value_names[op.lhs]
+            rhs = value_names[op.rhs]
+            _collect_wire_base(output, declared_ports, wire_widths)
+            _collect_wire_base(lhs, declared_ports, wire_widths)
+            _collect_wire_base(rhs, declared_ports, wire_widths)
+            instances.append(f"  {op.cell.data} {op.instance_name.data}({output}, {lhs}, {rhs});")
+            value_names[op.output] = output
             continue
         if isinstance(op, Or2Op):
-            _collect_wire_base(op.output.data, declared_ports, wire_widths)
-            _collect_wire_base(op.lhs.data, declared_ports, wire_widths)
-            _collect_wire_base(op.rhs.data, declared_ports, wire_widths)
-            instances.append(
-                f"  {op.cell.data} {op.instance_name.data}({op.output.data}, {op.lhs.data}, {op.rhs.data});"
-            )
+            output = op.output_name.data
+            lhs = value_names[op.lhs]
+            rhs = value_names[op.rhs]
+            _collect_wire_base(output, declared_ports, wire_widths)
+            _collect_wire_base(lhs, declared_ports, wire_widths)
+            _collect_wire_base(rhs, declared_ports, wire_widths)
+            instances.append(f"  {op.cell.data} {op.instance_name.data}({output}, {lhs}, {rhs});")
+            value_names[op.output] = output
             continue
         if isinstance(op, Ao21Op):
-            _collect_wire_base(op.output.data, declared_ports, wire_widths)
-            _collect_wire_base(op.and_lhs.data, declared_ports, wire_widths)
-            _collect_wire_base(op.and_rhs.data, declared_ports, wire_widths)
-            _collect_wire_base(op.or_rhs.data, declared_ports, wire_widths)
+            output = op.output_name.data
+            and_lhs = value_names[op.and_lhs]
+            and_rhs = value_names[op.and_rhs]
+            or_rhs = value_names[op.or_rhs]
+            _collect_wire_base(output, declared_ports, wire_widths)
+            _collect_wire_base(and_lhs, declared_ports, wire_widths)
+            _collect_wire_base(and_rhs, declared_ports, wire_widths)
+            _collect_wire_base(or_rhs, declared_ports, wire_widths)
             instances.append(
-                f"  {op.cell.data} "
-                f"{op.instance_name.data}({op.output.data}, {op.and_lhs.data}, {op.and_rhs.data}, {op.or_rhs.data});"
+                f"  {op.cell.data} {op.instance_name.data}({output}, {and_lhs}, {and_rhs}, {or_rhs});"
             )
+            value_names[op.output] = output
             continue
         if isinstance(op, Xor2Op):
-            _collect_wire_base(op.output.data, declared_ports, wire_widths)
-            _collect_wire_base(op.lhs.data, declared_ports, wire_widths)
-            _collect_wire_base(op.rhs.data, declared_ports, wire_widths)
-            instances.append(
-                f"  {op.cell.data} {op.instance_name.data}({op.output.data}, {op.lhs.data}, {op.rhs.data});"
-            )
+            output = op.output_name.data
+            lhs = value_names[op.lhs]
+            rhs = value_names[op.rhs]
+            _collect_wire_base(output, declared_ports, wire_widths)
+            _collect_wire_base(lhs, declared_ports, wire_widths)
+            _collect_wire_base(rhs, declared_ports, wire_widths)
+            instances.append(f"  {op.cell.data} {op.instance_name.data}({output}, {lhs}, {rhs});")
+            value_names[op.output] = output
             continue
         if isinstance(op, FullAdderOp):
-            _collect_wire_base(op.sum_out.data, declared_ports, wire_widths)
-            _collect_wire_base(op.carry_out.data, declared_ports, wire_widths)
-            _collect_wire_base(op.lhs.data, declared_ports, wire_widths)
-            _collect_wire_base(op.rhs.data, declared_ports, wire_widths)
-            _collect_wire_base(op.cin.data, declared_ports, wire_widths)
+            sum_out = op.sum_name.data
+            carry_out = op.carry_name.data
+            lhs = value_names[op.lhs]
+            rhs = value_names[op.rhs]
+            cin = value_names[op.cin]
+            _collect_wire_base(sum_out, declared_ports, wire_widths)
+            _collect_wire_base(carry_out, declared_ports, wire_widths)
+            _collect_wire_base(lhs, declared_ports, wire_widths)
+            _collect_wire_base(rhs, declared_ports, wire_widths)
+            _collect_wire_base(cin, declared_ports, wire_widths)
             instances.append(
-                f"  FAx1_ASAP7_75t_R {op.instance_name.data}({op.carry_out.data}, {op.sum_out.data}, {op.lhs.data}, {op.rhs.data}, {op.cin.data});"
+                f"  FAx1_ASAP7_75t_R {op.instance_name.data}({carry_out}, {sum_out}, {lhs}, {rhs}, {cin});"
             )
+            value_names[op.sum_out] = sum_out
+            value_names[op.carry_out] = carry_out
             continue
         if isinstance(op, HalfAdderOp):
-            _collect_wire_base(op.sum_out.data, declared_ports, wire_widths)
-            _collect_wire_base(op.carry_out.data, declared_ports, wire_widths)
-            _collect_wire_base(op.lhs.data, declared_ports, wire_widths)
-            _collect_wire_base(op.rhs.data, declared_ports, wire_widths)
+            sum_out = op.sum_name.data
+            carry_out = op.carry_name.data
+            lhs = value_names[op.lhs]
+            rhs = value_names[op.rhs]
+            _collect_wire_base(sum_out, declared_ports, wire_widths)
+            _collect_wire_base(carry_out, declared_ports, wire_widths)
+            _collect_wire_base(lhs, declared_ports, wire_widths)
+            _collect_wire_base(rhs, declared_ports, wire_widths)
             instances.append(
-                f"  HAxp5_ASAP7_75t_R {op.instance_name.data}({op.carry_out.data}, {op.sum_out.data}, {op.lhs.data}, {op.rhs.data});"
+                f"  HAxp5_ASAP7_75t_R {op.instance_name.data}({carry_out}, {sum_out}, {lhs}, {rhs});"
             )
+            value_names[op.sum_out] = sum_out
+            value_names[op.carry_out] = carry_out
             continue
         raise AssertionError(f"Unsupported op {op.name!r} during Verilog emission")
 
@@ -179,6 +216,9 @@ def _emit_module(
         lines.append(f"  wire [{width - 1}:0] {wire_name};")
     lines.append("")
     lines.extend(instances)
+    if assigns:
+        lines.append("")
+        lines.extend(assigns)
     lines.append("")
     lines.append("endmodule")
     return "\n".join(lines)

@@ -9,7 +9,7 @@ from xdsl.dialects.builtin import ArrayAttr, ModuleOp, StringAttr
 from xdsl.dialects.func import FuncOp
 
 from ..dialects.asap7 import And2Op, Ao21Op, Or2Op, Xor2Op
-from ..dialects.logic import InstanceOp, decode_connections
+from ..dialects.logic import ConstantOp, InputPortOp, InstanceOp, decode_connections
 from ..signals import SignalDecl, decode_signal_decls
 from .liberty_model import LibertyModel
 
@@ -499,54 +499,65 @@ def _expand_connection_refs(
 
 def _iter_gate_arcs(func_op: FuncOp) -> list[GateArc]:
     arcs: list[GateArc] = []
+    value_names = {}
     for op in func_op.body.block.ops:
+        if isinstance(op, InputPortOp):
+            value_names[op.output] = op.port_name.data
+            continue
+        if isinstance(op, ConstantOp):
+            value_names[op.output] = op.value.data
+            continue
         if isinstance(op, And2Op):
             arcs.append(
                 GateArc(
                     instance_name=op.instance_name.data,
                     cell=op.cell.data,
-                    output_signal=op.output.data,
+                    output_signal=op.output_name.data,
                     output_pin="Y",
-                    inputs=(("A", op.lhs.data), ("B", op.rhs.data)),
+                    inputs=(("A", value_names[op.lhs]), ("B", value_names[op.rhs])),
                 )
             )
+            value_names[op.output] = op.output_name.data
             continue
         if isinstance(op, Or2Op):
             arcs.append(
                 GateArc(
                     instance_name=op.instance_name.data,
                     cell=op.cell.data,
-                    output_signal=op.output.data,
+                    output_signal=op.output_name.data,
                     output_pin="Y",
-                    inputs=(("A", op.lhs.data), ("B", op.rhs.data)),
+                    inputs=(("A", value_names[op.lhs]), ("B", value_names[op.rhs])),
                 )
             )
+            value_names[op.output] = op.output_name.data
             continue
         if isinstance(op, Xor2Op):
             arcs.append(
                 GateArc(
                     instance_name=op.instance_name.data,
                     cell=op.cell.data,
-                    output_signal=op.output.data,
+                    output_signal=op.output_name.data,
                     output_pin="Y",
-                    inputs=(("A", op.lhs.data), ("B", op.rhs.data)),
+                    inputs=(("A", value_names[op.lhs]), ("B", value_names[op.rhs])),
                 )
             )
+            value_names[op.output] = op.output_name.data
             continue
         if isinstance(op, Ao21Op):
             arcs.append(
                 GateArc(
                     instance_name=op.instance_name.data,
                     cell=op.cell.data,
-                    output_signal=op.output.data,
+                    output_signal=op.output_name.data,
                     output_pin="Y",
                     inputs=(
-                        ("A1", op.and_lhs.data),
-                        ("A2", op.and_rhs.data),
-                        ("B", op.or_rhs.data),
+                        ("A1", value_names[op.and_lhs]),
+                        ("A2", value_names[op.and_rhs]),
+                        ("B", value_names[op.or_rhs]),
                     ),
                 )
             )
+            value_names[op.output] = op.output_name.data
             continue
     return arcs
 

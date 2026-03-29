@@ -15,6 +15,7 @@ from xdsl.printer import Printer
 from .dialects.arith import ARITH_DIALECT
 from .dialects.asap7 import ASAP7_DIALECT
 from .dialects.logic import LOGIC_DIALECT
+from .ir import RTL_IR_DIALECT
 from .passes.annotate_func_port_criticality import AnnotateFuncPortCriticalityPass
 from .passes.emit_verilog import emit_verilog
 from .passes.lower_arith_to_logic import LowerArithToLogicPass
@@ -47,6 +48,7 @@ def build_context() -> Context:
     ctx = Context()
     ctx.load_dialect(Builtin)
     ctx.load_dialect(Func)
+    ctx.load_dialect(RTL_IR_DIALECT)
     ctx.load_dialect(ARITH_DIALECT)
     ctx.load_dialect(LOGIC_DIALECT)
     ctx.load_dialect(ASAP7_DIALECT)

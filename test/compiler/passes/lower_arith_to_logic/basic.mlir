@@ -2,9 +2,10 @@
 // CHECK: "logic.instance"() {instance_name = "compressor_tree_0_inst"
 // CHECK: callee = "mac16x16p32__compressor_tree_0"
 // CHECK: "func.func"() ({
-// CHECK: "logic.half_adder"() {instance_name = "ct_demo_ha"
-// CHECK: region_kind = "compressor_tree"
-// CHECK: "logic.full_adder"() {instance_name = "ct_demo_fa"
+// CHECK: "logic.input"() {port_name = "pp_0_1"}
+// CHECK: instance_name = "ct_demo_ha", region_kind = "compressor_tree", sum_name = "ct_c1_sum", carry_name = "ct_c2_carry"
+// CHECK: instance_name = "ct_demo_fa", region_kind = "compressor_tree", sum_name = "ct_c2_sum", carry_name = "ct_c3_carry"
+// CHECK: port_name = "ct_c1_sum"
 // CHECK: logic.region_kind = "arith.compressor_tree"
 // CHECK: sym_name = "mac16x16p32__compressor_tree_0"
 // CHECK: sym_visibility = "private"

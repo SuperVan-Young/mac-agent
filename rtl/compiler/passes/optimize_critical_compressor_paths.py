@@ -12,6 +12,7 @@ from xdsl.passes import ModulePass
 
 from ..analysis import analyze_module_timing, load_default_liberty_model
 from ..dialects.asap7 import And2Op, Ao21Op, Xor2Op
+from ..dialects.logic import ConstantOp, InputPortOp
 
 
 _LOGIC_REGION_KIND_ATTR = "logic.region_kind"
@@ -28,29 +29,45 @@ class _FullAdderCone:
     xor_sum: Xor2Op
     and_ab: And2Op
     ao21_carry: Ao21Op
+    value_names: dict
 
     @property
     def lhs(self) -> str:
-        return self.xor_ab.lhs.data
+        return self.value_names[self.xor_ab.lhs]
 
     @property
     def rhs(self) -> str:
-        return self.xor_ab.rhs.data
+        return self.value_names[self.xor_ab.rhs]
 
     @property
     def cin(self) -> str:
-        return self.xor_sum.rhs.data
+        return self.value_names[self.xor_sum.rhs]
 
     @property
     def sum_out(self) -> str:
-        return self.xor_sum.output.data
+        return self.xor_sum.output_name.data
 
     @property
     def carry_out(self) -> str:
-        return self.ao21_carry.output.data
+        return self.ao21_carry.output_name.data
+
+
+def _build_value_names(func_op: FuncOp) -> dict:
+    value_names = {}
+    for op in func_op.body.block.ops:
+        if isinstance(op, InputPortOp):
+            value_names[op.output] = op.port_name.data
+            continue
+        if isinstance(op, ConstantOp):
+            value_names[op.output] = op.value.data
+            continue
+        if isinstance(op, Xor2Op | And2Op | Ao21Op):
+            value_names[op.output] = op.output_name.data
+    return value_names
 
 
 def _collect_full_adder_cones(func_op: FuncOp) -> list[_FullAdderCone]:
+    value_names = _build_value_names(func_op)
     xor_by_name: dict[str, Xor2Op] = {}
     and_by_name: dict[str, And2Op] = {}
     ao21_by_name: dict[str, Ao21Op] = {}
@@ -83,6 +100,7 @@ def _collect_full_adder_cones(func_op: FuncOp) -> list[_FullAdderCone]:
                 xor_sum=xor_sum,
                 and_ab=and_ab,
                 ao21_carry=ao21_carry,
+                value_names=value_names,
             )
         )
     return cones
@@ -96,13 +114,13 @@ def _signal_arrival(report, signal: str) -> float:
     return report.signal_arrivals_ns.get(signal, 0.0)
 
 
-def _rewrite_cone_inputs(cone: _FullAdderCone, lhs: str, rhs: str, cin: str) -> None:
-    cone.xor_ab.properties["lhs"] = StringAttr(lhs)
-    cone.xor_ab.properties["rhs"] = StringAttr(rhs)
-    cone.and_ab.properties["lhs"] = StringAttr(lhs)
-    cone.and_ab.properties["rhs"] = StringAttr(rhs)
-    cone.xor_sum.properties["rhs"] = StringAttr(cin)
-    cone.ao21_carry.properties["and_rhs"] = StringAttr(cin)
+def _rewrite_cone_inputs(cone: _FullAdderCone, lhs, rhs, cin) -> None:
+    cone.xor_ab.operands[0] = lhs
+    cone.xor_ab.operands[1] = rhs
+    cone.and_ab.operands[0] = lhs
+    cone.and_ab.operands[1] = rhs
+    cone.xor_sum.operands[1] = cin
+    cone.ao21_carry.operands[1] = cin
 
 
 def _read_max_iterations() -> int:
@@ -122,7 +140,7 @@ def _read_max_iterations() -> int:
 
 def _choose_rewrite(cones: list[_FullAdderCone], report):
     max_delay = report.max_delay_ns
-    candidates: list[tuple[float, float, str, _FullAdderCone, list[str], str]] = []
+    candidates: list[tuple[float, float, str, _FullAdderCone, list, object]] = []
     for cone in cones:
         cone_score = max(
             _signal_score(report, cone.sum_out),
@@ -131,31 +149,43 @@ def _choose_rewrite(cones: list[_FullAdderCone], report):
         if cone_score + 1e-12 < max_delay - _NEAR_CRITICAL_MARGIN_NS:
             continue
 
-        signals = [cone.lhs, cone.rhs, cone.cin]
+        signal_values = [
+            (cone.lhs, cone.xor_ab.lhs),
+            (cone.rhs, cone.xor_ab.rhs),
+            (cone.cin, cone.xor_sum.rhs),
+        ]
+        signals = [name for name, _ in signal_values]
         latest_signal = max(signals, key=lambda signal: (_signal_arrival(report, signal), signal))
         if latest_signal == cone.cin:
             continue
 
-        remaining = [signal for signal in signals if signal != latest_signal]
+        remaining = [(name, value) for name, value in signal_values if name != latest_signal]
         if len(remaining) != 2:
             continue
         arrival_spread = _signal_arrival(report, latest_signal) - max(
-            _signal_arrival(report, remaining[0]),
-            _signal_arrival(report, remaining[1]),
+            _signal_arrival(report, remaining[0][0]),
+            _signal_arrival(report, remaining[1][0]),
         )
         candidates.append(
-            (cone_score, arrival_spread, cone.stem, cone, remaining, latest_signal)
+            (
+                cone_score,
+                arrival_spread,
+                cone.stem,
+                cone,
+                remaining,
+                next(value for name, value in signal_values if name == latest_signal),
+            )
         )
     if not candidates:
         return None
     candidates.sort(reverse=True, key=lambda item: (item[0], item[1], item[2]))
-    _, _, _, cone, remaining, latest_signal = candidates[0]
-    remaining.sort(key=lambda signal: (_signal_arrival(report, signal), signal))
-    return cone, remaining[0], remaining[1], latest_signal
+    _, _, _, cone, remaining, latest_value = candidates[0]
+    remaining.sort(key=lambda item: (_signal_arrival(report, item[0]), item[0]))
+    return cone, remaining[0][1], remaining[1][1], latest_value
 
 
 def _optimize_module_once(module: ModuleOp, analysis) -> bool:
-    candidates: list[tuple[float, float, str, FuncOp, _FullAdderCone, str, str, str]] = []
+    candidates: list[tuple[float, float, str, FuncOp, _FullAdderCone, object, object, object]] = []
     for inner in module.ops:
         if not isinstance(inner, FuncOp):
             continue
@@ -175,9 +205,9 @@ def _optimize_module_once(module: ModuleOp, analysis) -> bool:
             _signal_score(report, cone.sum_out),
             _signal_score(report, cone.carry_out),
         )
-        arrival_spread = _signal_arrival(report, cin) - max(
-            _signal_arrival(report, lhs),
-            _signal_arrival(report, rhs),
+        arrival_spread = _signal_arrival(report, cone.value_names[cin]) - max(
+            _signal_arrival(report, cone.value_names[lhs]),
+            _signal_arrival(report, cone.value_names[rhs]),
         )
         candidates.append(
             (cone_score, arrival_spread, inner.sym_name.data, inner, cone, lhs, rhs, cin)

@@ -1,7 +1,7 @@
 // RUN: compiler-opt --pass lower-arith-to-logic --pass lower-logic-to-asap7 --pass annotate-func-port-criticality --pass region-scoped-cell-sizing
 // CHECK: "func.func"() ({
-// CHECK: "asap7.xor2"() {instance_name = "pt_b0_xor_p", cell = "XOR2xp5_ASAP7_75t_R"
-// CHECK: "asap7.xor2"() {instance_name = "pt_b3_xor_sum", cell = "XOR2x2_ASAP7_75t_R"
+// CHECK: instance_name = "pt_b0_xor_p", cell = "XOR2xp5_ASAP7_75t_R"
+// CHECK: instance_name = "pt_b3_xor_sum", cell = "XOR2x2_ASAP7_75t_R"
 // CHECK: logic.region_kind = "arith.prefix_tree"
 // CHECK: timing.keep_fast_instances =
 // CHECK: timing.reclaim_instances =
