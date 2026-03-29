@@ -6,10 +6,6 @@ from .ops import (
     MultiplierOp,
     PartialProductGeneratorOp,
     PrefixTreeOp,
-    decode_bit_map,
-    decode_compressor_ops,
-    decode_columns,
-    decode_terms,
 )
 
 __all__ = [
@@ -18,8 +14,4 @@ __all__ = [
     "MultiplierOp",
     "PartialProductGeneratorOp",
     "PrefixTreeOp",
-    "decode_bit_map",
-    "decode_compressor_ops",
-    "decode_columns",
-    "decode_terms",
 ]

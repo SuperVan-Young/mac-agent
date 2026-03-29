@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from xdsl.dialects.builtin import ArrayAttr, StringAttr
+from xdsl.dialects.builtin import ArrayAttr, IntAttr, StringAttr
 from xdsl.ir import Dialect, SSAValue
 from xdsl.irdl import (
     IRDLOperation,
@@ -10,49 +10,47 @@ from xdsl.irdl import (
     prop_def,
     irdl_op_definition,
     result_def,
+    var_operand_def,
+    var_result_def,
 )
 
-from ...ir import WireType, bit_wire_type
+from ...ir import WireType, bit_wire_type, wire_type
 
 
-def _encode_connections(connections: list[tuple[str, str]]) -> ArrayAttr[StringAttr]:
-    return ArrayAttr(StringAttr(f"{port}={signal}") for port, signal in connections)
+def _encode_port_names(port_names: list[str]) -> ArrayAttr[StringAttr]:
+    return ArrayAttr(StringAttr(port_name) for port_name in port_names)
 
 
-def decode_connections(attr: ArrayAttr[StringAttr]) -> list[tuple[str, str]]:
-    connections: list[tuple[str, str]] = []
-    for item in attr:
-        port, _, signal = item.data.partition("=")
-        connections.append((port, signal))
-    return connections
+def decode_port_names(attr: ArrayAttr[StringAttr]) -> list[str]:
+    return [item.data for item in attr]
+
+
+def _named_result_types(
+    result_type: WireType | None,
+    *names: str,
+) -> tuple[WireType, ...]:
+    dims = (1,) if result_type is None else tuple(dim.data for dim in result_type.shape)
+    return tuple(wire_type(*dims, name=name) for name in names)
 
 
 @irdl_op_definition
 class InputPortOp(IRDLOperation):
     name = "logic.input"
 
-    port_name = prop_def(StringAttr)
     output = result_def(WireType)
 
-    def __init__(self, *, port_name: str, wire_type: WireType | None = None) -> None:
-        super().__init__(
-            properties={"port_name": StringAttr(port_name)},
-            result_types=(wire_type or bit_wire_type(),),
-        )
+    def __init__(self, *, port_name: str, wire_type_: WireType | None = None) -> None:
+        super().__init__(result_types=(_named_result_types(wire_type_, port_name)[0],))
 
 
 @irdl_op_definition
 class OutputPortOp(IRDLOperation):
     name = "logic.output"
 
-    port_name = prop_def(StringAttr)
     value = operand_def(WireType)
 
-    def __init__(self, *, port_name: str, value: SSAValue) -> None:
-        super().__init__(
-            operands=(value,),
-            properties={"port_name": StringAttr(port_name)},
-        )
+    def __init__(self, *, value: SSAValue) -> None:
+        super().__init__(operands=(value,))
 
 
 @irdl_op_definition
@@ -62,10 +60,10 @@ class ConstantOp(IRDLOperation):
     value = prop_def(StringAttr)
     output = result_def(WireType)
 
-    def __init__(self, *, value: str, wire_type: WireType | None = None) -> None:
+    def __init__(self, *, value: str, wire_type_: WireType | None = None) -> None:
         super().__init__(
             properties={"value": StringAttr(value)},
-            result_types=(wire_type or bit_wire_type(),),
+            result_types=((wire_type_ or bit_wire_type()),),
         )
 
 
@@ -77,7 +75,6 @@ class And2Op(IRDLOperation):
     rhs = operand_def(WireType)
     instance_name = prop_def(StringAttr)
     region_kind = prop_def(StringAttr)
-    output_name = prop_def(StringAttr)
     output = result_def(WireType)
 
     def __init__(
@@ -88,16 +85,15 @@ class And2Op(IRDLOperation):
         output_name: str,
         lhs: SSAValue,
         rhs: SSAValue,
-        wire_type: WireType | None = None,
+        wire_type_: WireType | None = None,
     ) -> None:
         super().__init__(
             operands=(lhs, rhs),
             properties={
                 "instance_name": StringAttr(instance_name),
                 "region_kind": StringAttr(region_kind),
-                "output_name": StringAttr(output_name),
             },
-            result_types=(wire_type or bit_wire_type(),),
+            result_types=(_named_result_types(wire_type_, output_name)[0],),
         )
 
 
@@ -109,7 +105,6 @@ class Or2Op(IRDLOperation):
     rhs = operand_def(WireType)
     instance_name = prop_def(StringAttr)
     region_kind = prop_def(StringAttr)
-    output_name = prop_def(StringAttr)
     output = result_def(WireType)
 
     def __init__(
@@ -120,16 +115,15 @@ class Or2Op(IRDLOperation):
         output_name: str,
         lhs: SSAValue,
         rhs: SSAValue,
-        wire_type: WireType | None = None,
+        wire_type_: WireType | None = None,
     ) -> None:
         super().__init__(
             operands=(lhs, rhs),
             properties={
                 "instance_name": StringAttr(instance_name),
                 "region_kind": StringAttr(region_kind),
-                "output_name": StringAttr(output_name),
             },
-            result_types=(wire_type or bit_wire_type(),),
+            result_types=(_named_result_types(wire_type_, output_name)[0],),
         )
 
 
@@ -141,7 +135,6 @@ class Xor2Op(IRDLOperation):
     rhs = operand_def(WireType)
     instance_name = prop_def(StringAttr)
     region_kind = prop_def(StringAttr)
-    output_name = prop_def(StringAttr)
     output = result_def(WireType)
 
     def __init__(
@@ -152,16 +145,15 @@ class Xor2Op(IRDLOperation):
         output_name: str,
         lhs: SSAValue,
         rhs: SSAValue,
-        wire_type: WireType | None = None,
+        wire_type_: WireType | None = None,
     ) -> None:
         super().__init__(
             operands=(lhs, rhs),
             properties={
                 "instance_name": StringAttr(instance_name),
                 "region_kind": StringAttr(region_kind),
-                "output_name": StringAttr(output_name),
             },
-            result_types=(wire_type or bit_wire_type(),),
+            result_types=(_named_result_types(wire_type_, output_name)[0],),
         )
 
 
@@ -174,7 +166,6 @@ class Ao21Op(IRDLOperation):
     or_rhs = operand_def(WireType)
     instance_name = prop_def(StringAttr)
     region_kind = prop_def(StringAttr)
-    output_name = prop_def(StringAttr)
     output = result_def(WireType)
 
     def __init__(
@@ -186,16 +177,15 @@ class Ao21Op(IRDLOperation):
         and_lhs: SSAValue,
         and_rhs: SSAValue,
         or_rhs: SSAValue,
-        wire_type: WireType | None = None,
+        wire_type_: WireType | None = None,
     ) -> None:
         super().__init__(
             operands=(and_lhs, and_rhs, or_rhs),
             properties={
                 "instance_name": StringAttr(instance_name),
                 "region_kind": StringAttr(region_kind),
-                "output_name": StringAttr(output_name),
             },
-            result_types=(wire_type or bit_wire_type(),),
+            result_types=(_named_result_types(wire_type_, output_name)[0],),
         )
 
 
@@ -208,8 +198,6 @@ class FullAdderOp(IRDLOperation):
     cin = operand_def(WireType)
     instance_name = prop_def(StringAttr)
     region_kind = prop_def(StringAttr)
-    sum_name = prop_def(StringAttr)
-    carry_name = prop_def(StringAttr)
     sum_out = result_def(WireType)
     carry_out = result_def(WireType)
 
@@ -223,18 +211,15 @@ class FullAdderOp(IRDLOperation):
         lhs: SSAValue,
         rhs: SSAValue,
         cin: SSAValue,
-        wire_type: WireType | None = None,
+        wire_type_: WireType | None = None,
     ) -> None:
-        result_wire_type = wire_type or bit_wire_type()
         super().__init__(
             operands=(lhs, rhs, cin),
             properties={
                 "instance_name": StringAttr(instance_name),
                 "region_kind": StringAttr(region_kind),
-                "sum_name": StringAttr(sum_name),
-                "carry_name": StringAttr(carry_name),
             },
-            result_types=(result_wire_type, result_wire_type),
+            result_types=_named_result_types(wire_type_, sum_name, carry_name),
         )
 
 
@@ -246,8 +231,6 @@ class HalfAdderOp(IRDLOperation):
     rhs = operand_def(WireType)
     instance_name = prop_def(StringAttr)
     region_kind = prop_def(StringAttr)
-    sum_name = prop_def(StringAttr)
-    carry_name = prop_def(StringAttr)
     sum_out = result_def(WireType)
     carry_out = result_def(WireType)
 
@@ -260,18 +243,15 @@ class HalfAdderOp(IRDLOperation):
         carry_name: str,
         lhs: SSAValue,
         rhs: SSAValue,
-        wire_type: WireType | None = None,
+        wire_type_: WireType | None = None,
     ) -> None:
-        result_wire_type = wire_type or bit_wire_type()
         super().__init__(
             operands=(lhs, rhs),
             properties={
                 "instance_name": StringAttr(instance_name),
                 "region_kind": StringAttr(region_kind),
-                "sum_name": StringAttr(sum_name),
-                "carry_name": StringAttr(carry_name),
             },
-            result_types=(result_wire_type, result_wire_type),
+            result_types=_named_result_types(wire_type_, sum_name, carry_name),
         )
 
 
@@ -279,11 +259,13 @@ class HalfAdderOp(IRDLOperation):
 class InstanceOp(IRDLOperation):
     name = "logic.instance"
 
+    inputs = var_operand_def(WireType)
     instance_name = prop_def(StringAttr)
     callee = prop_def(StringAttr)
     region_kind = prop_def(StringAttr)
-    input_connections = prop_def(ArrayAttr[StringAttr])
-    output_connections = prop_def(ArrayAttr[StringAttr])
+    input_ports = prop_def(ArrayAttr[StringAttr])
+    output_ports = prop_def(ArrayAttr[StringAttr])
+    outputs = var_result_def(WireType)
 
     def __init__(
         self,
@@ -291,17 +273,21 @@ class InstanceOp(IRDLOperation):
         instance_name: str,
         callee: str,
         region_kind: str,
-        input_connections: list[tuple[str, str]],
-        output_connections: list[tuple[str, str]],
+        input_ports: list[str],
+        inputs: list[SSAValue],
+        output_ports: list[str],
+        output_types: list[WireType],
     ) -> None:
         super().__init__(
+            operands=[inputs],
             properties={
                 "instance_name": StringAttr(instance_name),
                 "callee": StringAttr(callee),
                 "region_kind": StringAttr(region_kind),
-                "input_connections": _encode_connections(input_connections),
-                "output_connections": _encode_connections(output_connections),
-            }
+                "input_ports": _encode_port_names(input_ports),
+                "output_ports": _encode_port_names(output_ports),
+            },
+            result_types=[output_types],
         )
 
 

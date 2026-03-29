@@ -21,6 +21,7 @@ from ..dialects.asap7 import (
     Xor2Op as Asap7Xor2Op,
 )
 from ..dialects.logic import And2Op, Ao21Op, FullAdderOp, HalfAdderOp, Or2Op, Xor2Op
+from ..ir import require_wire_name
 
 
 class LowerAnd2Pattern(RewritePattern):
@@ -30,7 +31,7 @@ class LowerAnd2Pattern(RewritePattern):
             return
         new_op = Asap7And2Op(
             instance_name=op.instance_name.data,
-            output_name=op.output_name.data,
+            output_name=require_wire_name(op.output),
             lhs=op.lhs,
             rhs=op.rhs,
             owner=op.region_kind.data,
@@ -45,7 +46,7 @@ class LowerOr2Pattern(RewritePattern):
             return
         new_op = Asap7Or2Op(
             instance_name=op.instance_name.data,
-            output_name=op.output_name.data,
+            output_name=require_wire_name(op.output),
             lhs=op.lhs,
             rhs=op.rhs,
             owner=op.region_kind.data,
@@ -60,7 +61,7 @@ class LowerAo21Pattern(RewritePattern):
             return
         new_op = Asap7Ao21Op(
             instance_name=op.instance_name.data,
-            output_name=op.output_name.data,
+            output_name=require_wire_name(op.output),
             and_lhs=op.and_lhs,
             and_rhs=op.and_rhs,
             or_rhs=op.or_rhs,
@@ -76,7 +77,7 @@ class LowerXor2Pattern(RewritePattern):
             return
         new_op = Asap7Xor2Op(
             instance_name=op.instance_name.data,
-            output_name=op.output_name.data,
+            output_name=require_wire_name(op.output),
             lhs=op.lhs,
             rhs=op.rhs,
             owner=op.region_kind.data,
@@ -91,14 +92,14 @@ class LowerHalfAdderPattern(RewritePattern):
             return
         xor_op = Asap7Xor2Op(
             instance_name=f"{op.instance_name.data}_xor",
-            output_name=op.sum_name.data,
+            output_name=require_wire_name(op.sum_out),
             lhs=op.lhs,
             rhs=op.rhs,
             owner=op.region_kind.data,
         )
         and_op = Asap7And2Op(
             instance_name=f"{op.instance_name.data}_and",
-            output_name=op.carry_name.data,
+            output_name=require_wire_name(op.carry_out),
             lhs=op.lhs,
             rhs=op.rhs,
             owner=op.region_kind.data,
@@ -126,7 +127,7 @@ class LowerFullAdderPattern(RewritePattern):
         )
         xor_sum = Asap7Xor2Op(
             instance_name=f"{op.instance_name.data}_xor_sum",
-            output_name=op.sum_name.data,
+            output_name=require_wire_name(op.sum_out),
             lhs=xor_ab.output,
             rhs=op.cin,
             owner=op.region_kind.data,
@@ -140,7 +141,7 @@ class LowerFullAdderPattern(RewritePattern):
         )
         ao21_carry = Asap7Ao21Op(
             instance_name=f"{op.instance_name.data}_ao21_carry",
-            output_name=op.carry_name.data,
+            output_name=require_wire_name(op.carry_out),
             and_lhs=xor_ab.output,
             and_rhs=op.cin,
             or_rhs=and_ab.output,

@@ -9,7 +9,8 @@ from xdsl.dialects.builtin import ArrayAttr, ModuleOp, StringAttr
 from xdsl.dialects.func import FuncOp, ReturnOp
 
 from ..dialects.asap7 import And2Op, Ao21Op, FullAdderOp, HalfAdderOp, Or2Op, Xor2Op
-from ..dialects.logic import ConstantOp, InputPortOp, InstanceOp, OutputPortOp, decode_connections
+from ..dialects.logic import ConstantOp, InputPortOp, InstanceOp, OutputPortOp, decode_port_names
+from ..ir import get_wire_width, require_wire_name
 from ..signals import SignalDecl, decode_signal_decls
 
 
@@ -73,6 +74,22 @@ def _collect_wire_base(signal: str, declared_ports: set[str], widths: dict[str, 
     widths[signal] = max(widths.get(signal, 0), 1)
 
 
+def _collect_wire_value(value, declared_ports: set[str], widths: dict[str, int]) -> None:
+    signal = require_wire_name(value)
+    if _BIT_SELECT_RE.match(signal) is not None:
+        _collect_wire_base(signal, declared_ports, widths)
+        return
+    if signal in declared_ports:
+        return
+    widths[signal] = max(widths.get(signal, 0), get_wire_width(value))
+
+
+def _expand_signal_decl(signal: SignalDecl) -> list[str]:
+    if signal.width == 1:
+        return [signal.name]
+    return [f"{signal.name}[{index}]" for index in range(signal.width)]
+
+
 def _emit_instance(
     *,
     callee: str,
@@ -81,6 +98,85 @@ def _emit_instance(
 ) -> str:
     rendered = ", ".join(f".{port}({signal})" for port, signal in connections)
     return f"  {callee} {instance_name}({rendered});"
+
+
+def _split_ref(ref: str) -> tuple[str, int | None]:
+    match = _BIT_SELECT_RE.match(ref)
+    if match is None:
+        return ref, None
+    return match.group("base"), int(match.group("index"))
+
+
+def _compress_instance_connections(connections: list[tuple[str, str]]) -> list[tuple[str, str]]:
+    grouped: list[tuple[str, list[tuple[str, str]]]] = []
+    for port_ref, signal_ref in connections:
+        port_base, _ = _split_ref(port_ref)
+        if grouped and grouped[-1][0] == port_base:
+            grouped[-1][1].append((port_ref, signal_ref))
+            continue
+        grouped.append((port_base, [(port_ref, signal_ref)]))
+
+    compressed: list[tuple[str, str]] = []
+    for port_base, items in grouped:
+        if len(items) == 1:
+            compressed.append(items[0])
+            continue
+        port_parts = [_split_ref(port_ref) for port_ref, _ in items]
+        signal_parts = [_split_ref(signal_ref) for _, signal_ref in items]
+        if any(index is None for _, index in port_parts):
+            compressed.extend(items)
+            continue
+        if any(index is None for _, index in signal_parts):
+            compressed.extend(items)
+            continue
+        signal_bases = {base for base, _ in signal_parts}
+        if len(signal_bases) != 1:
+            compressed.extend(items)
+            continue
+        if any(port_index != signal_index for (_, port_index), (_, signal_index) in zip(port_parts, signal_parts)):
+            compressed.extend(items)
+            continue
+        sorted_port_indices = [index for _, index in port_parts]
+        if sorted_port_indices != list(range(len(items))):
+            compressed.extend(items)
+            continue
+        compressed.append((port_base, next(iter(signal_bases))))
+    return compressed
+
+
+def _expand_grouped_port_connections(
+    port_names: list[str],
+    signal_refs: list[str],
+) -> list[tuple[str, str]]:
+    connections: list[tuple[str, str]] = []
+    used: set[int] = set()
+    for port_name in port_names:
+        exact = [(idx, signal) for idx, signal in enumerate(signal_refs) if signal == port_name and idx not in used]
+        indexed = []
+        for idx, signal in enumerate(signal_refs):
+            if idx in used:
+                continue
+            base, index = _split_ref(signal)
+            if base != port_name or index is None:
+                continue
+            indexed.append((index, idx, signal))
+        if exact:
+            idx, signal = exact[0]
+            used.add(idx)
+            connections.append((port_name, signal))
+            continue
+        if not indexed:
+            fallback = next((idx for idx in range(len(signal_refs)) if idx not in used), None)
+            if fallback is None:
+                raise AssertionError(f"Missing connection for scalar port {port_name!r}")
+            used.add(fallback)
+            connections.append((port_name, signal_refs[fallback]))
+            continue
+        indexed.sort(key=lambda item: item[0])
+        for index, idx, signal in indexed:
+            used.add(idx)
+            connections.append((f"{port_name}[{index}]", signal))
+    return connections
 
 
 def _emit_module(
@@ -94,38 +190,76 @@ def _emit_module(
     wire_widths: dict[str, int] = {}
     instances: list[str] = []
     assigns: list[str] = []
-    value_names = {}
+    value_names: dict = {}
+    output_port_index = 0
+    output_bit_index = 0
 
     for op in ops:
         if isinstance(op, FuncOp | ReturnOp):
             continue
         if isinstance(op, InputPortOp):
-            value_names[op.output] = op.port_name.data
+            value_names[op.output] = require_wire_name(op.output)
+            _collect_wire_value(op.output, declared_ports, wire_widths)
             continue
         if isinstance(op, ConstantOp):
             value_names[op.output] = op.value.data
             continue
         if isinstance(op, OutputPortOp):
+            if output_port_index >= len(output_ports):
+                raise AssertionError("Too many logic.output ops for module signature")
+            target_port = output_ports[output_port_index]
             source = value_names[op.value]
-            if source != op.port_name.data:
+            source_width = get_wire_width(op.value)
+            if source_width == target_port.width and require_wire_name(op.value) == target_port.name:
+                target = target_port.name
+                output_port_index += 1
+                output_bit_index = 0
+            else:
+                target = (
+                    target_port.name
+                    if target_port.width == 1
+                    else f"{target_port.name}[{output_bit_index}]"
+                )
+                output_bit_index += 1
+                if output_bit_index == target_port.width:
+                    output_port_index += 1
+                    output_bit_index = 0
+            if source != target:
                 _collect_wire_base(source, declared_ports, wire_widths)
-                assigns.append(f"  assign {op.port_name.data} = {source};")
+                assigns.append(f"  assign {target} = {source};")
             continue
         if isinstance(op, InstanceOp):
-            input_connections = decode_connections(op.input_connections)
-            output_connections = decode_connections(op.output_connections)
-            for _, signal in [*input_connections, *output_connections]:
+            input_ports_for_op = decode_port_names(op.input_ports)
+            output_ports_for_op = decode_port_names(op.output_ports)
+            raw_connections = _expand_grouped_port_connections(
+                input_ports_for_op,
+                [value_names[value] for value in op.inputs],
+            )
+            raw_connections.extend(
+                _expand_grouped_port_connections(
+                    output_ports_for_op,
+                    [require_wire_name(value) for value in op.outputs],
+                )
+            )
+            for value in op.inputs:
+                _collect_wire_value(value, declared_ports, wire_widths)
+            for value in op.outputs:
+                _collect_wire_value(value, declared_ports, wire_widths)
+            for _, signal in raw_connections:
                 _collect_wire_base(signal, declared_ports, wire_widths)
+            connections = _compress_instance_connections(raw_connections)
             instances.append(
                 _emit_instance(
                     callee=op.callee.data,
                     instance_name=op.instance_name.data,
-                    connections=[*input_connections, *output_connections],
+                    connections=connections,
                 )
             )
+            for result in op.outputs:
+                value_names[result] = require_wire_name(result)
             continue
         if isinstance(op, And2Op):
-            output = op.output_name.data
+            output = require_wire_name(op.output)
             lhs = value_names[op.lhs]
             rhs = value_names[op.rhs]
             _collect_wire_base(output, declared_ports, wire_widths)
@@ -135,7 +269,7 @@ def _emit_module(
             value_names[op.output] = output
             continue
         if isinstance(op, Or2Op):
-            output = op.output_name.data
+            output = require_wire_name(op.output)
             lhs = value_names[op.lhs]
             rhs = value_names[op.rhs]
             _collect_wire_base(output, declared_ports, wire_widths)
@@ -145,7 +279,7 @@ def _emit_module(
             value_names[op.output] = output
             continue
         if isinstance(op, Ao21Op):
-            output = op.output_name.data
+            output = require_wire_name(op.output)
             and_lhs = value_names[op.and_lhs]
             and_rhs = value_names[op.and_rhs]
             or_rhs = value_names[op.or_rhs]
@@ -159,7 +293,7 @@ def _emit_module(
             value_names[op.output] = output
             continue
         if isinstance(op, Xor2Op):
-            output = op.output_name.data
+            output = require_wire_name(op.output)
             lhs = value_names[op.lhs]
             rhs = value_names[op.rhs]
             _collect_wire_base(output, declared_ports, wire_widths)
@@ -169,8 +303,8 @@ def _emit_module(
             value_names[op.output] = output
             continue
         if isinstance(op, FullAdderOp):
-            sum_out = op.sum_name.data
-            carry_out = op.carry_name.data
+            sum_out = require_wire_name(op.sum_out)
+            carry_out = require_wire_name(op.carry_out)
             lhs = value_names[op.lhs]
             rhs = value_names[op.rhs]
             cin = value_names[op.cin]
@@ -186,8 +320,8 @@ def _emit_module(
             value_names[op.carry_out] = carry_out
             continue
         if isinstance(op, HalfAdderOp):
-            sum_out = op.sum_name.data
-            carry_out = op.carry_name.data
+            sum_out = require_wire_name(op.sum_out)
+            carry_out = require_wire_name(op.carry_out)
             lhs = value_names[op.lhs]
             rhs = value_names[op.rhs]
             _collect_wire_base(sum_out, declared_ports, wire_widths)

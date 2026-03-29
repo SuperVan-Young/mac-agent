@@ -4,12 +4,14 @@ from __future__ import annotations
 
 from collections import defaultdict, deque
 from dataclasses import dataclass, field
+import re
 
 from xdsl.dialects.builtin import ArrayAttr, ModuleOp, StringAttr
 from xdsl.dialects.func import FuncOp
 
 from ..dialects.asap7 import And2Op, Ao21Op, Or2Op, Xor2Op
-from ..dialects.logic import ConstantOp, InputPortOp, InstanceOp, decode_connections
+from ..dialects.logic import ConstantOp, InputPortOp, InstanceOp, decode_port_names
+from ..ir import require_wire_name
 from ..signals import SignalDecl, decode_signal_decls
 from .liberty_model import LibertyModel
 
@@ -17,6 +19,7 @@ from .liberty_model import LibertyModel
 _LOGIC_INPUT_PORTS_ATTR = "logic.input_ports"
 _LOGIC_OUTPUT_PORTS_ATTR = "logic.output_ports"
 _LOGIC_REGION_KIND_ATTR = "logic.region_kind"
+_BIT_SELECT_RE = re.compile(r"^(?P<base>[A-Za-z_]\w*)\[(?P<index>\d+)\]$")
 FUNC_TIMING_CRITICAL_PORT_PAIRS_ATTR = "timing.critical_port_pairs"
 FUNC_TIMING_KEEP_FAST_INSTANCES_ATTR = "timing.keep_fast_instances"
 FUNC_TIMING_RECLAIM_INSTANCES_ATTR = "timing.reclaim_instances"
@@ -105,15 +108,7 @@ class ModuleTimingAnalysis:
 
 
 def analyze_module_timing(module: ModuleOp, liberty_model: LibertyModel) -> ModuleTimingAnalysis:
-    func_ops = {
-        func_op.sym_name.data: func_op
-        for func_op in module.ops
-        if isinstance(func_op, FuncOp)
-    }
-    signatures = {
-        name: _read_func_signature(func_op)
-        for name, func_op in func_ops.items()
-    }
+    func_ops = {func_op.sym_name.data: func_op for func_op in module.ops if isinstance(func_op, FuncOp)}
     internal_input_loads = {
         name: _compute_internal_input_loads(func_op, liberty_model)
         for name, func_op in func_ops.items()
@@ -123,29 +118,15 @@ def analyze_module_timing(module: ModuleOp, liberty_model: LibertyModel) -> Modu
     for op in module.ops:
         if not isinstance(op, InstanceOp):
             continue
-        _, input_ports, _ = signatures[op.callee.data]
-        for port_name, signal_name in decode_connections(op.input_connections):
-            for port_ref, top_ref in _expand_connection_refs(
-                port_name=port_name,
-                signal_name=signal_name,
-                port_decls=input_ports,
-            ):
-                top_net_loads[top_ref] += internal_input_loads[op.callee.data].get(port_ref, 0.0)
+        for port_name, top_ref in _expand_grouped_port_refs(decode_port_names(op.input_ports), op.inputs):
+            top_net_loads[top_ref] += internal_input_loads[op.callee.data].get(port_name, 0.0)
 
-    external_loads: dict[str, dict[str, float]] = {
-        name: defaultdict(float) for name in func_ops
-    }
+    external_loads: dict[str, dict[str, float]] = {name: defaultdict(float) for name in func_ops}
     for op in module.ops:
         if not isinstance(op, InstanceOp):
             continue
-        _, _, output_ports = signatures[op.callee.data]
-        for port_name, signal_name in decode_connections(op.output_connections):
-            for port_ref, top_ref in _expand_connection_refs(
-                port_name=port_name,
-                signal_name=signal_name,
-                port_decls=output_ports,
-            ):
-                external_loads[op.callee.data][port_ref] += top_net_loads.get(top_ref, 0.0)
+        for port_name, top_ref in _expand_grouped_port_refs(decode_port_names(op.output_ports), op.outputs):
+            external_loads[op.callee.data][port_name] += top_net_loads.get(top_ref, 0.0)
 
     instance_ops = [op for op in module.ops if isinstance(op, InstanceOp)]
     top_net_arrivals: dict[str, float] = {}
@@ -156,20 +137,14 @@ def analyze_module_timing(module: ModuleOp, liberty_model: LibertyModel) -> Modu
             top_net_arrivals[ref] = 0.0
             top_net_slews[ref] = _DEFAULT_INPUT_SLEW_NS
 
-    ordered_instances = _topologically_sort_instances(instance_ops, signatures)
+    ordered_instances = _topologically_sort_instances(instance_ops)
     instance_inputs: dict[str, tuple[dict[str, float], dict[str, float]]] = {}
     for op in ordered_instances:
-        _, input_ports, output_ports = signatures[op.callee.data]
         input_arrivals_ns: dict[str, float] = {}
         input_slews_ns: dict[str, float] = {}
-        for port_name, signal_name in decode_connections(op.input_connections):
-            for port_ref, top_ref in _expand_connection_refs(
-                port_name=port_name,
-                signal_name=signal_name,
-                port_decls=input_ports,
-            ):
-                input_arrivals_ns[port_ref] = top_net_arrivals.get(top_ref, 0.0)
-                input_slews_ns[port_ref] = top_net_slews.get(top_ref, _DEFAULT_INPUT_SLEW_NS)
+        for port_name, top_ref in _expand_grouped_port_refs(decode_port_names(op.input_ports), op.inputs):
+            input_arrivals_ns[port_name] = top_net_arrivals.get(top_ref, 0.0)
+            input_slews_ns[port_name] = top_net_slews.get(top_ref, _DEFAULT_INPUT_SLEW_NS)
         instance_inputs[op.instance_name.data] = (input_arrivals_ns, input_slews_ns)
 
         report = analyze_func_timing(
@@ -180,19 +155,11 @@ def analyze_module_timing(module: ModuleOp, liberty_model: LibertyModel) -> Modu
             input_slews_ns=input_slews_ns,
         )
 
-        for port_name, signal_name in decode_connections(op.output_connections):
-            for port_ref, top_ref in _expand_connection_refs(
-                port_name=port_name,
-                signal_name=signal_name,
-                port_decls=output_ports,
-            ):
-                if port_ref not in report.output_arrivals_ns:
-                    continue
-                top_net_arrivals[top_ref] = report.output_arrivals_ns[port_ref]
-                top_net_slews[top_ref] = report.output_slews_ns.get(
-                    port_ref,
-                    _DEFAULT_INPUT_SLEW_NS,
-                )
+        for port_name, top_ref in _expand_grouped_port_refs(decode_port_names(op.output_ports), op.outputs):
+            if port_name not in report.output_arrivals_ns:
+                continue
+            top_net_arrivals[top_ref] = report.output_arrivals_ns[port_name]
+            top_net_slews[top_ref] = report.output_slews_ns.get(port_name, _DEFAULT_INPUT_SLEW_NS)
 
     reports: dict[str, FuncTimingReport] = {}
     top_net_tails: dict[str, float] = {}
@@ -203,15 +170,9 @@ def analyze_module_timing(module: ModuleOp, liberty_model: LibertyModel) -> Modu
 
     for op in reversed(ordered_instances):
         input_arrivals_ns, input_slews_ns = instance_inputs[op.instance_name.data]
-        _, input_ports, output_ports = signatures[op.callee.data]
         output_tail_ns: dict[str, float] = {}
-        for port_name, signal_name in decode_connections(op.output_connections):
-            for port_ref, top_ref in _expand_connection_refs(
-                port_name=port_name,
-                signal_name=signal_name,
-                port_decls=output_ports,
-            ):
-                output_tail_ns[port_ref] = top_net_tails.get(top_ref, 0.0)
+        for port_name, top_ref in _expand_grouped_port_refs(decode_port_names(op.output_ports), op.outputs):
+            output_tail_ns[port_name] = top_net_tails.get(top_ref, 0.0)
 
         report = analyze_func_timing(
             func_ops[op.callee.data],
@@ -223,20 +184,13 @@ def analyze_module_timing(module: ModuleOp, liberty_model: LibertyModel) -> Modu
         )
         reports[op.callee.data] = report
 
-        for port_name, signal_name in decode_connections(op.input_connections):
-            for port_ref, top_ref in _expand_connection_refs(
-                port_name=port_name,
-                signal_name=signal_name,
-                port_decls=input_ports,
-            ):
-                top_net_tails[top_ref] = max(
-                    top_net_tails.get(top_ref, 0.0),
-                    report.input_tails_ns.get(port_ref, 0.0),
-                )
+        for port_name, top_ref in _expand_grouped_port_refs(decode_port_names(op.input_ports), op.inputs):
+            top_net_tails[top_ref] = max(
+                top_net_tails.get(top_ref, 0.0),
+                report.input_tails_ns.get(port_name, 0.0),
+            )
 
-    return ModuleTimingAnalysis(
-        func_reports=reports
-    )
+    return ModuleTimingAnalysis(func_reports=reports)
 
 
 def analyze_func_timing(
@@ -259,12 +213,8 @@ def analyze_func_timing(
     for ref, load_ff in external_output_loads_ff.items():
         net_loads[ref] += load_ff
 
-    arrivals: dict[str, float] = {
-        ref: input_arrivals_ns.get(ref, 0.0) for ref in input_refs
-    }
-    slews: dict[str, float] = {
-        ref: input_slews_ns.get(ref, _DEFAULT_INPUT_SLEW_NS) for ref in input_refs
-    }
+    arrivals: dict[str, float] = {ref: input_arrivals_ns.get(ref, 0.0) for ref in input_refs}
+    slews: dict[str, float] = {ref: input_slews_ns.get(ref, _DEFAULT_INPUT_SLEW_NS) for ref in input_refs}
     predecessors: dict[str, tuple[str, str] | None] = {ref: None for ref in input_refs}
 
     for gate in gate_arcs:
@@ -285,12 +235,7 @@ def analyze_func_timing(
                 continue
             best_arrival = candidate_arrival
             best_input_signal = input_signal
-            best_slew = liberty_model.transition(
-                gate.cell,
-                (pin_name, gate.output_pin),
-                input_slew,
-                load_ff,
-            )
+            best_slew = liberty_model.transition(gate.cell, (pin_name, gate.output_pin), input_slew, load_ff)
         arrivals[gate.output_signal] = best_arrival
         slews[gate.output_signal] = best_slew
         predecessors[gate.output_signal] = (best_input_signal, gate.instance_name)
@@ -328,12 +273,7 @@ def analyze_func_timing(
             if _is_literal(input_signal):
                 continue
             input_slew = slews.get(input_signal, _DEFAULT_INPUT_SLEW_NS)
-            gate_delay = liberty_model.delay(
-                gate.cell,
-                (pin_name, gate.output_pin),
-                input_slew,
-                load_ff,
-            )
+            gate_delay = liberty_model.delay(gate.cell, (pin_name, gate.output_pin), input_slew, load_ff)
             reverse_tails[input_signal] = max(
                 reverse_tails.get(input_signal, 0.0),
                 gate_delay + output_tail,
@@ -343,16 +283,8 @@ def analyze_func_timing(
         func_name=func_name,
         instance_names=tuple(gate.instance_name for gate in gate_arcs),
         port_paths=port_paths,
-        output_arrivals_ns={
-            output_ref: arrivals[output_ref]
-            for output_ref in output_refs
-            if output_ref in arrivals
-        },
-        output_slews_ns={
-            output_ref: slews[output_ref]
-            for output_ref in output_refs
-            if output_ref in slews
-        },
+        output_arrivals_ns={output_ref: arrivals[output_ref] for output_ref in output_refs if output_ref in arrivals},
+        output_slews_ns={output_ref: slews[output_ref] for output_ref in output_refs if output_ref in slews},
         input_tails_ns={ref: reverse_tails.get(ref, 0.0) for ref in input_refs},
         instance_scores_ns=instance_scores_ns,
         signal_arrivals_ns=dict(arrivals),
@@ -426,38 +358,23 @@ def _read_func_signature(func_op: FuncOp) -> tuple[str, list[SignalDecl], list[S
     )
 
 
-def _topologically_sort_instances(
-    instance_ops: list[InstanceOp],
-    signatures: dict[str, tuple[str, list[SignalDecl], list[SignalDecl]]],
-) -> list[InstanceOp]:
+def _topologically_sort_instances(instance_ops: list[InstanceOp]) -> list[InstanceOp]:
     drivers: dict[str, str] = {}
     for op in instance_ops:
-        _, _, output_ports = signatures[op.callee.data]
-        for port_name, signal_name in decode_connections(op.output_connections):
-            for _, top_ref in _expand_connection_refs(
-                port_name=port_name,
-                signal_name=signal_name,
-                port_decls=output_ports,
-            ):
-                drivers[top_ref] = op.instance_name.data
+        for value in op.outputs:
+            drivers[require_wire_name(value)] = op.instance_name.data
 
     incoming_count: dict[str, int] = defaultdict(int)
     dependents: dict[str, list[str]] = defaultdict(list)
     op_by_name = {op.instance_name.data: op for op in instance_ops}
     for op in instance_ops:
         incoming_count.setdefault(op.instance_name.data, 0)
-        _, input_ports, _ = signatures[op.callee.data]
-        for port_name, signal_name in decode_connections(op.input_connections):
-            for _, top_ref in _expand_connection_refs(
-                port_name=port_name,
-                signal_name=signal_name,
-                port_decls=input_ports,
-            ):
-                producer = drivers.get(top_ref)
-                if producer is None or producer == op.instance_name.data:
-                    continue
-                dependents[producer].append(op.instance_name.data)
-                incoming_count[op.instance_name.data] += 1
+        for value in op.inputs:
+            producer = drivers.get(require_wire_name(value))
+            if producer is None or producer == op.instance_name.data:
+                continue
+            dependents[producer].append(op.instance_name.data)
+            incoming_count[op.instance_name.data] += 1
 
     queue = deque(sorted(name for name, degree in incoming_count.items() if degree == 0))
     ordered_names: list[str] = []
@@ -480,75 +397,95 @@ def _expand_signal_decl(signal: SignalDecl) -> tuple[str, ...]:
     return tuple(f"{signal.name}[{index}]" for index in range(signal.width))
 
 
-def _expand_connection_refs(
-    *,
-    port_name: str,
-    signal_name: str,
-    port_decls: list[SignalDecl],
-) -> list[tuple[str, str]]:
-    decl = next((item for item in port_decls if item.name == port_name), None)
-    if decl is None:
-        raise AssertionError(f"Unknown port {port_name!r}")
-    if decl.width == 1:
-        return [(port_name, signal_name)]
-    return [
-        (f"{port_name}[{index}]", f"{signal_name}[{index}]")
-        for index in range(decl.width)
-    ]
+def _expand_grouped_port_refs(port_names: list[str], values) -> list[tuple[str, str]]:
+    connections: list[tuple[str, str]] = []
+    signal_refs = [require_wire_name(value) for value in values]
+    used: set[int] = set()
+    for port_name in port_names:
+        exact = [(idx, signal) for idx, signal in enumerate(signal_refs) if signal == port_name and idx not in used]
+        indexed = []
+        for idx, signal in enumerate(signal_refs):
+            if idx in used:
+                continue
+            match = _BIT_SELECT_RE.match(signal)
+            if match is None or match.group("base") != port_name:
+                continue
+            indexed.append((int(match.group("index")), idx, signal))
+        if exact:
+            idx, signal = exact[0]
+            used.add(idx)
+            connections.append((port_name, signal))
+            continue
+        if not indexed:
+            fallback = next((idx for idx in range(len(signal_refs)) if idx not in used), None)
+            if fallback is None:
+                raise AssertionError(f"Missing connection for scalar port {port_name!r}")
+            used.add(fallback)
+            connections.append((port_name, signal_refs[fallback]))
+            continue
+        indexed.sort(key=lambda item: item[0])
+        for index, idx, signal in indexed:
+            used.add(idx)
+            connections.append((f"{port_name}[{index}]", signal))
+    return connections
 
 
 def _iter_gate_arcs(func_op: FuncOp) -> list[GateArc]:
     arcs: list[GateArc] = []
-    value_names = {}
+    value_names: dict = {}
     for op in func_op.body.block.ops:
         if isinstance(op, InputPortOp):
-            value_names[op.output] = op.port_name.data
+            value_names[op.output] = require_wire_name(op.output)
             continue
         if isinstance(op, ConstantOp):
             value_names[op.output] = op.value.data
             continue
         if isinstance(op, And2Op):
+            output_name = require_wire_name(op.output)
             arcs.append(
                 GateArc(
                     instance_name=op.instance_name.data,
                     cell=op.cell.data,
-                    output_signal=op.output_name.data,
+                    output_signal=output_name,
                     output_pin="Y",
                     inputs=(("A", value_names[op.lhs]), ("B", value_names[op.rhs])),
                 )
             )
-            value_names[op.output] = op.output_name.data
+            value_names[op.output] = output_name
             continue
         if isinstance(op, Or2Op):
+            output_name = require_wire_name(op.output)
             arcs.append(
                 GateArc(
                     instance_name=op.instance_name.data,
                     cell=op.cell.data,
-                    output_signal=op.output_name.data,
+                    output_signal=output_name,
                     output_pin="Y",
                     inputs=(("A", value_names[op.lhs]), ("B", value_names[op.rhs])),
                 )
             )
-            value_names[op.output] = op.output_name.data
+            value_names[op.output] = output_name
             continue
         if isinstance(op, Xor2Op):
+            output_name = require_wire_name(op.output)
             arcs.append(
                 GateArc(
                     instance_name=op.instance_name.data,
                     cell=op.cell.data,
-                    output_signal=op.output_name.data,
+                    output_signal=output_name,
                     output_pin="Y",
                     inputs=(("A", value_names[op.lhs]), ("B", value_names[op.rhs])),
                 )
             )
-            value_names[op.output] = op.output_name.data
+            value_names[op.output] = output_name
             continue
         if isinstance(op, Ao21Op):
+            output_name = require_wire_name(op.output)
             arcs.append(
                 GateArc(
                     instance_name=op.instance_name.data,
                     cell=op.cell.data,
-                    output_signal=op.output_name.data,
+                    output_signal=output_name,
                     output_pin="Y",
                     inputs=(
                         ("A1", value_names[op.and_lhs]),
@@ -557,8 +494,7 @@ def _iter_gate_arcs(func_op: FuncOp) -> list[GateArc]:
                     ),
                 )
             )
-            value_names[op.output] = op.output_name.data
-            continue
+            value_names[op.output] = output_name
     return arcs
 
 

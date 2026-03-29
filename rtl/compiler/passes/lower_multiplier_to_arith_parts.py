@@ -1,4 +1,4 @@
-"""Expand arith.multiplier into PPG, compressor tree, and prefix tree regions."""
+"""Expand arith.multiplier into SSA-connected PPG, compressor tree, and prefix tree ops."""
 
 from __future__ import annotations
 
@@ -20,6 +20,8 @@ from ..dialects.arith import (
     PartialProductGeneratorOp,
     PrefixTreeOp,
 )
+from ..dialects.logic import InputPortOp, OutputPortOp
+from ..ir import wire_type
 from ..signals import decode_signal_decls
 
 
@@ -165,47 +167,57 @@ class LowerMultiplierToArithPartsPattern(RewritePattern):
         addend_port = input_ports[2]
         output_port = output_ports[0]
 
-        ppg_terms: list[tuple[str, str, str]] = []
         columns: dict[int, list[str]] = {}
+        lhs_inputs = [InputPortOp(port_name=f"{lhs_port.name}[{bit}]") for bit in range(lhs_port.width)]
+        rhs_inputs = [InputPortOp(port_name=f"{rhs_port.name}[{bit}]") for bit in range(rhs_port.width)]
+        addend_inputs = [InputPortOp(port_name=f"{addend_port.name}[{bit}]") for bit in range(addend_port.width)]
+        ppg_output_names: list[str] = []
         for lhs_bit in range(lhs_port.width):
             for rhs_bit in range(rhs_port.width):
                 column = lhs_bit + rhs_bit
                 if column >= output_port.width:
                     continue
-                output_name = f"pp_{lhs_bit}_{rhs_bit}"
-                ppg_terms.append(
-                    (
-                        output_name,
-                        f"{lhs_port.name}[{lhs_bit}]",
-                        f"{rhs_port.name}[{rhs_bit}]",
-                    )
-                )
-                columns.setdefault(column, []).append(output_name)
+                pp_name = f"pp_{lhs_bit}_{rhs_bit}"
+                ppg_output_names.append(pp_name)
+                columns.setdefault(column, []).append(pp_name)
 
         for bit in range(min(addend_port.width, output_port.width)):
             columns.setdefault(bit, []).append(f"{addend_port.name}[{bit}]")
 
-        _, lhs_row, rhs_row = _plan_compressor_tree(columns)
+        compressor_output_names = ["ct_lhs", "ct_rhs"]
+        prefix_output_names = [output_port.name]
+
+        ppg = PartialProductGeneratorOp(
+            implementation="and_grid",
+            inputs=[*(input_op.output for input_op in lhs_inputs), *(input_op.output for input_op in rhs_inputs)],
+            output_names=ppg_output_names,
+            owner="arith.partial_product_generator",
+        )
+        compressor = CompressorTreeOp(
+            implementation="dadda",
+            inputs=[*ppg.results, *(input_op.output for input_op in addend_inputs)],
+            output_names=compressor_output_names,
+            output_types=[wire_type(output_port.width, name="ct_lhs"), wire_type(output_port.width, name="ct_rhs")],
+            owner="arith.compressor_tree",
+        )
+        prefix = PrefixTreeOp(
+            implementation="kogge_stone",
+            inputs=list(compressor.results),
+            output_names=prefix_output_names,
+            output_types=[wire_type(output_port.width, name=output_port.name)],
+            owner="arith.prefix_tree",
+        )
+        outputs = [OutputPortOp(value=prefix.results[0])]
 
         rewriter.replace_matched_op(
             [
-                PartialProductGeneratorOp(
-                    implementation="and_grid",
-                    terms=ppg_terms,
-                    owner="arith.partial_product_generator",
-                ),
-                CompressorTreeOp(
-                    reduction_type="dadda",
-                    columns=columns,
-                    owner="arith.compressor_tree",
-                ),
-                PrefixTreeOp(
-                    implementation="kogge_stone",
-                    lhs_row=lhs_row,
-                    rhs_row=rhs_row,
-                    output_name=output_port.name,
-                    owner="arith.prefix_tree",
-                ),
+                *lhs_inputs,
+                *rhs_inputs,
+                *addend_inputs,
+                ppg,
+                compressor,
+                prefix,
+                *outputs,
             ],
             safe_erase=True,
         )

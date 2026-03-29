@@ -13,6 +13,7 @@ from xdsl.passes import ModulePass
 from ..analysis import analyze_module_timing, load_default_liberty_model
 from ..dialects.asap7 import And2Op, Ao21Op, Xor2Op
 from ..dialects.logic import ConstantOp, InputPortOp
+from ..ir import require_wire_name
 
 
 _LOGIC_REGION_KIND_ATTR = "logic.region_kind"
@@ -45,24 +46,24 @@ class _FullAdderCone:
 
     @property
     def sum_out(self) -> str:
-        return self.xor_sum.output_name.data
+        return require_wire_name(self.xor_sum.output)
 
     @property
     def carry_out(self) -> str:
-        return self.ao21_carry.output_name.data
+        return require_wire_name(self.ao21_carry.output)
 
 
 def _build_value_names(func_op: FuncOp) -> dict:
     value_names = {}
     for op in func_op.body.block.ops:
         if isinstance(op, InputPortOp):
-            value_names[op.output] = op.port_name.data
+            value_names[op.output] = require_wire_name(op.output)
             continue
         if isinstance(op, ConstantOp):
             value_names[op.output] = op.value.data
             continue
         if isinstance(op, Xor2Op | And2Op | Ao21Op):
-            value_names[op.output] = op.output_name.data
+            value_names[op.output] = require_wire_name(op.output)
     return value_names
 
 

@@ -4,6 +4,7 @@ from .ops import (
     And2Op,
     Ao21Op,
     ConstantOp,
+    decode_port_names,
     FullAdderOp,
     HalfAdderOp,
     InputPortOp,
@@ -12,13 +13,13 @@ from .ops import (
     OutputPortOp,
     Or2Op,
     Xor2Op,
-    decode_connections,
 )
 
 __all__ = [
     "And2Op",
     "Ao21Op",
     "ConstantOp",
+    "decode_port_names",
     "FullAdderOp",
     "HalfAdderOp",
     "InputPortOp",
@@ -27,5 +28,4 @@ __all__ = [
     "OutputPortOp",
     "Or2Op",
     "Xor2Op",
-    "decode_connections",
 ]

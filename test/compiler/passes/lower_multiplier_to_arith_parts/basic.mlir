@@ -1,11 +1,13 @@
 // RUN: compiler-opt --pass lower-multiplier-to-arith-parts
-// CHECK: "arith.partial_product_generator"()
-// CHECK: terms = ["pp_0_0=A[0],B[0]"
-// CHECK: "arith.compressor_tree"()
-// CHECK: reduction_type = "dadda"
-// CHECK: "arith.prefix_tree"()
+// CHECK: "logic.input"() : () -> !rtl.wire<"A[0]":1>
+// CHECK: "arith.partial_product_generator"(
+// CHECK: !rtl.wire<"pp_0_0":1>
+// CHECK: "arith.compressor_tree"(
+// CHECK: implementation = "dadda"
+// CHECK: !rtl.wire<"ct_lhs":32>
+// CHECK: "arith.prefix_tree"(
 // CHECK: implementation = "kogge_stone"
-// CHECK: output_name = "D"
+// CHECK: !rtl.wire<"D":32>
 // CHECK-NOT: "arith.multiplier"()
 "builtin.module"() ({
   "arith.multiplier"() {implementation = "array"} : () -> ()

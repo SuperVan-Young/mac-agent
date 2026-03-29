@@ -18,15 +18,7 @@ from xdsl.pattern_rewriter import (
     op_type_rewrite_pattern,
 )
 
-from ..dialects.arith import (
-    CompressorTreeOp,
-    PartialProductGeneratorOp,
-    PrefixTreeOp,
-    decode_bit_map,
-    decode_columns,
-    decode_compressor_ops,
-    decode_terms,
-)
+from ..dialects.arith import CompressorTreeOp, PartialProductGeneratorOp, PrefixTreeOp
 from ..dialects.logic import (
     And2Op,
     Ao21Op,
@@ -38,12 +30,14 @@ from ..dialects.logic import (
     OutputPortOp,
     Xor2Op,
 )
-from ..ir import bit_wire_type, expand_signal_decl_refs
+from ..ir import bit_wire_type, get_wire_width, require_wire_name, wire_type
 from ..signals import SignalDecl, encode_signal_decls
-from .lower_multiplier_to_arith_parts import _plan_compressor_tree, _read_module_ports
+from .lower_multiplier_to_arith_parts import _plan_compressor_tree
 
 
 _BIT_SELECT_RE = re.compile(r"^(?P<base>[A-Za-z_]\w*)\[(?P<index>\d+)\]$")
+_PP_NAME_RE = re.compile(r"^pp_(?P<lhs>\d+)_(?P<rhs>\d+)$")
+_ROW_NAME_RE = re.compile(r"^(?P<base>[A-Za-z_]\w*)\[(?P<index>\d+)\]$")
 _LOGIC_REGION_KIND_ATTR = "logic.region_kind"
 _LOGIC_INPUT_PORTS_ATTR = "logic.input_ports"
 _LOGIC_OUTPUT_PORTS_ATTR = "logic.output_ports"
@@ -64,17 +58,7 @@ def _is_literal(signal: str) -> bool:
     return "'" in signal or signal.isdigit()
 
 
-def _build_known_widths(module: ModuleOp) -> dict[str, int]:
-    input_ports, output_ports = _read_module_ports(module)
-    return {signal.name: signal.width for signal in input_ports + output_ports}
-
-
-def _build_port_decls(
-    signals: list[str],
-    *,
-    kind: str,
-    known_widths: dict[str, int],
-) -> list[SignalDecl]:
+def _build_port_decls(signals: list[str], *, kind: str) -> list[SignalDecl]:
     order: list[str] = []
     widths: dict[str, int] = {}
     for signal in signals:
@@ -83,16 +67,23 @@ def _build_port_decls(
         match = _BIT_SELECT_RE.match(signal)
         if match is not None:
             base = match.group("base")
-            width = known_widths.get(base, int(match.group("index")) + 1)
+            width = int(match.group("index")) + 1
         else:
             base = signal
-            width = known_widths.get(base, 1)
+            width = 1
         if base not in widths:
             order.append(base)
             widths[base] = width
-            continue
-        widths[base] = max(widths[base], width)
+        else:
+            widths[base] = max(widths[base], width)
     return [SignalDecl(name=name, width=widths[name], kind=kind) for name in order]
+
+
+def _build_port_decls_from_values(values: list[SSAValue], *, kind: str) -> list[SignalDecl]:
+    return [
+        SignalDecl(name=require_wire_name(value), width=get_wire_width(value), kind=kind)
+        for value in values
+    ]
 
 
 class _LogicRegionBuilder:
@@ -106,8 +97,14 @@ class _LogicRegionBuilder:
 
     def _seed_inputs(self) -> None:
         for signal in self.input_ports:
-            for ref in expand_signal_decl_refs(signal):
-                op = InputPortOp(port_name=ref, wire_type=bit_wire_type())
+            if signal.width == 1:
+                op = InputPortOp(port_name=signal.name)
+                self.ops.append(op)
+                self.values[signal.name] = op.output
+                continue
+            for bit in range(signal.width):
+                ref = f"{signal.name}[{bit}]"
+                op = InputPortOp(port_name=ref)
                 self.ops.append(op)
                 self.values[ref] = op.output
 
@@ -119,7 +116,7 @@ class _LogicRegionBuilder:
         const = self.constants.get(signal)
         if const is not None:
             return const
-        op = ConstantOp(value=signal, wire_type=bit_wire_type())
+        op = ConstantOp(value=signal, wire_type_=bit_wire_type())
         self.ops.append(op)
         self.constants[signal] = op.output
         return op.output
@@ -129,8 +126,11 @@ class _LogicRegionBuilder:
 
     def finish(self) -> list:
         for signal in self.output_ports:
-            for ref in expand_signal_decl_refs(signal):
-                self.ops.append(OutputPortOp(port_name=ref, value=self.get(ref)))
+            if signal.width == 1:
+                self.ops.append(OutputPortOp(value=self.get(signal.name)))
+                continue
+            for bit in range(signal.width):
+                self.ops.append(OutputPortOp(value=self.get(f"{signal.name}[{bit}]")))
         return [*self.ops, ReturnOp()]
 
 
@@ -155,57 +155,35 @@ def _make_instance_op(
     instance_name: str,
     callee: str,
     region_kind: str,
-    input_ports: list[SignalDecl],
-    output_ports: list[SignalDecl],
+    inputs: list[SSAValue],
+    input_names: list[str],
+    output_names: list[str],
+    output_types: list,
 ) -> InstanceOp:
     return InstanceOp(
         instance_name=instance_name,
         callee=callee,
         region_kind=region_kind,
-        input_connections=[(port.name, port.name) for port in input_ports],
-        output_connections=[(port.name, port.name) for port in output_ports],
+        input_ports=input_names,
+        inputs=inputs,
+        output_ports=output_names,
+        output_types=output_types,
     )
 
 
-def _build_partial_product_generator_ports(
-    module: ModuleOp, terms: list[tuple[str, str, str]]
-) -> tuple[list[SignalDecl], list[SignalDecl]]:
-    known_widths = _build_known_widths(module)
-    input_refs = [ref for _, lhs, rhs in terms for ref in (lhs, rhs)]
-    output_refs = [output for output, _, _ in terms]
-    return (
-        _build_port_decls(input_refs, kind="input", known_widths=known_widths),
-        _build_port_decls(output_refs, kind="output", known_widths=known_widths),
-    )
+def _input_name_map(values: list[SSAValue]) -> dict[str, SSAValue]:
+    return {require_wire_name(value): value for value in values}
 
 
-def _build_compressor_tree_ports(
-    module: ModuleOp,
-    columns: dict[int, list[str]],
-    stage_ops: list[tuple[str, str, str, str, str, str, str]],
-) -> tuple[list[SignalDecl], list[SignalDecl]]:
-    known_widths = _build_known_widths(module)
-    input_refs = [signal for _, signals in sorted(columns.items()) for signal in signals]
-    output_refs = [wire for _, _, _, _, _, sum_out, carry_out in stage_ops for wire in (sum_out, carry_out)]
-    return (
-        _build_port_decls(input_refs, kind="input", known_widths=known_widths),
-        _build_port_decls(output_refs, kind="output", known_widths=known_widths),
-    )
-
-
-def _build_prefix_tree_ports(
-    module: ModuleOp, lhs_row: dict[int, str], rhs_row: dict[int, str], output_name: str
-) -> tuple[list[SignalDecl], list[SignalDecl]]:
-    known_widths = _build_known_widths(module)
-    input_refs = [signal for _, signal in sorted(lhs_row.items())] + [
-        signal for _, signal in sorted(rhs_row.items())
-    ]
-    max_bit = max(set(lhs_row) | set(rhs_row), default=known_widths.get(output_name, 1) - 1)
-    output_refs = [f"{output_name}[{bit}]" for bit in range(max_bit + 1)]
-    return (
-        _build_port_decls(input_refs, kind="input", known_widths=known_widths),
-        _build_port_decls(output_refs, kind="output", known_widths=known_widths),
-    )
+def _group_rows(names: list[str]) -> dict[str, dict[int, str]]:
+    rows: dict[str, dict[int, str]] = defaultdict(dict)
+    for name in names:
+        match = _ROW_NAME_RE.match(name)
+        if match is None:
+            rows[name][0] = name
+            continue
+        rows[match.group("base")][int(match.group("index"))] = name
+    return rows
 
 
 class _NameAllocator:
@@ -224,57 +202,90 @@ class _NameAllocator:
 
 
 class LowerPartialProductGeneratorPattern(RewritePattern):
-    def __init__(self, module: ModuleOp, name_allocator: _NameAllocator) -> None:
+    def __init__(self, name_allocator: _NameAllocator) -> None:
         super().__init__()
-        self.module = module
         self.name_allocator = name_allocator
 
     @op_type_rewrite_pattern
     def match_and_rewrite(self, op: PartialProductGeneratorOp, rewriter: PatternRewriter) -> None:
-        terms = decode_terms(op.terms)
-        input_ports, output_ports = _build_partial_product_generator_ports(self.module, terms)
-        builder = _LogicRegionBuilder(input_ports, output_ports)
-        for index, (output, lhs, rhs) in enumerate(terms):
+        input_values = list(op.inputs)
+        output_names = [require_wire_name(result) for result in op.results]
+        input_names = [require_wire_name(value) for value in input_values]
+        input_map = _input_name_map(input_values)
+
+        base_names = sorted({name.split("[", 1)[0] for name in input_names})
+        if len(base_names) != 2:
+            raise AssertionError(f"Expected two PPG input bases, got {base_names}")
+        lhs_base, rhs_base = base_names
+
+        builder = _LogicRegionBuilder(
+            _build_port_decls(input_names, kind="input"),
+            _build_port_decls_from_values(list(op.results), kind="output"),
+        )
+        for index, output_name in enumerate(output_names):
+            match = _PP_NAME_RE.match(output_name)
+            if match is None:
+                raise AssertionError(f"Malformed partial product name {output_name!r}")
+            lhs = builder.get(f"{lhs_base}[{int(match.group('lhs'))}]")
+            rhs = builder.get(f"{rhs_base}[{int(match.group('rhs'))}]")
             and2 = And2Op(
                 instance_name=f"ppg_and2_{index}",
                 region_kind="partial_product_generator",
-                output_name=output,
-                lhs=builder.get(lhs),
-                rhs=builder.get(rhs),
+                output_name=output_name,
+                lhs=lhs,
+                rhs=rhs,
             )
             builder.ops.append(and2)
-            builder.bind(output, and2.output)
+            builder.bind(output_name, and2.output)
+
         func_name, instance_name = self.name_allocator.allocate(op.owner.data)
         func_op = _make_logic_region_func(
             func_name=func_name,
             region_kind=op.owner.data,
-            input_ports=input_ports,
-            output_ports=output_ports,
+            input_ports=builder.input_ports,
+            output_ports=builder.output_ports,
             body_ops=builder.finish(),
         )
         instance_op = _make_instance_op(
             instance_name=instance_name,
             callee=func_name,
             region_kind=op.owner.data,
-            input_ports=input_ports,
-            output_ports=output_ports,
+            inputs=[input_map[name] for name in input_names],
+            input_names=input_names,
+            output_names=output_names,
+            output_types=[result.type for result in op.results],
         )
-        rewriter.replace_matched_op([instance_op, func_op], safe_erase=True)
+        rewriter.replace_matched_op([instance_op, func_op], new_results=tuple(instance_op.outputs), safe_erase=True)
 
 
 class LowerCompressorTreeToLogicPattern(RewritePattern):
-    def __init__(self, module: ModuleOp, name_allocator: _NameAllocator) -> None:
+    def __init__(self, name_allocator: _NameAllocator) -> None:
         super().__init__()
-        self.module = module
         self.name_allocator = name_allocator
 
     @op_type_rewrite_pattern
     def match_and_rewrite(self, op: CompressorTreeOp, rewriter: PatternRewriter) -> None:
-        columns = decode_columns(op.columns)
-        stage_ops = decode_compressor_ops(op.stages)
-        if not stage_ops:
-            stage_ops, _, _ = _plan_compressor_tree(columns)
-        input_ports, output_ports = _build_compressor_tree_ports(self.module, columns, stage_ops)
+        input_values = list(op.inputs)
+        output_names = [require_wire_name(result) for result in op.results]
+        input_names = [require_wire_name(value) for value in input_values]
+        input_map = _input_name_map(input_values)
+
+        columns: dict[int, list[str]] = defaultdict(list)
+        for name in input_names:
+            pp_match = _PP_NAME_RE.match(name)
+            if pp_match is not None:
+                column = int(pp_match.group("lhs")) + int(pp_match.group("rhs"))
+                columns[column].append(name)
+                continue
+            row_match = _ROW_NAME_RE.match(name)
+            if row_match is not None:
+                columns[int(row_match.group("index"))].append(name)
+                continue
+            raise AssertionError(f"Unsupported compressor input {name!r}")
+
+        stage_ops, lhs_row, rhs_row = _plan_compressor_tree(dict(columns))
+        input_ports = _build_port_decls(input_names, kind="input")
+        output_ports = _build_port_decls_from_values(list(op.results), kind="output")
         builder = _LogicRegionBuilder(input_ports, output_ports)
         for kind, instance_name, lhs, rhs, cin, sum_out, carry_out in stage_ops:
             if kind == "fa":
@@ -305,33 +316,49 @@ class LowerCompressorTreeToLogicPattern(RewritePattern):
                 builder.bind(carry_out, ha.carry_out)
                 continue
             raise AssertionError(f"Unsupported compressor op kind {kind!r}")
+
+        for signal in output_ports:
+            if signal.name not in {"ct_lhs", "ct_rhs"}:
+                raise AssertionError(f"Unsupported compressor output port {signal.name!r}")
+            row = lhs_row if signal.name == "ct_lhs" else rhs_row
+            if signal.width == 1:
+                builder.bind(signal.name, builder.get(row.get(0, "1'b0")))
+                continue
+            for bit in range(signal.width):
+                builder.bind(f"{signal.name}[{bit}]", builder.get(row.get(bit, "1'b0")))
+
         func_name, instance_name = self.name_allocator.allocate(op.owner.data)
         func_op = _make_logic_region_func(
             func_name=func_name,
             region_kind=op.owner.data,
-            input_ports=input_ports,
-            output_ports=output_ports,
+            input_ports=builder.input_ports,
+            output_ports=builder.output_ports,
             body_ops=builder.finish(),
         )
         instance_op = _make_instance_op(
             instance_name=instance_name,
             callee=func_name,
             region_kind=op.owner.data,
-            input_ports=input_ports,
-            output_ports=output_ports,
+            inputs=[input_map[name] for name in input_names],
+            input_names=input_names,
+            output_names=[signal.name for signal in output_ports],
+            output_types=[result.type for result in op.results],
         )
-        rewriter.replace_matched_op([instance_op, func_op], safe_erase=True)
+        rewriter.replace_matched_op([instance_op, func_op], new_results=tuple(instance_op.outputs), safe_erase=True)
 
 
 class LowerPrefixTreeToLogicPattern(RewritePattern):
-    def __init__(self, module: ModuleOp, name_allocator: _NameAllocator) -> None:
+    def __init__(self, name_allocator: _NameAllocator) -> None:
         super().__init__()
-        self.module = module
         self.name_allocator = name_allocator
 
-    def _lower_ripple(self, op: PrefixTreeOp, builder: _LogicRegionBuilder) -> None:
-        lhs_row = decode_bit_map(op.lhs_row)
-        rhs_row = decode_bit_map(op.rhs_row)
+    def _lower_ripple(
+        self,
+        output_base: str,
+        lhs_row: dict[int, str],
+        rhs_row: dict[int, str],
+        builder: _LogicRegionBuilder,
+    ) -> None:
         max_bit = max(set(lhs_row) | set(rhs_row), default=-1)
         for bit in range(max_bit + 1):
             cin_name = "1'b0" if bit == 0 else f"pt_carry_{bit}"
@@ -339,19 +366,23 @@ class LowerPrefixTreeToLogicPattern(RewritePattern):
             fa = FullAdderOp(
                 instance_name=f"pt_b{bit}_fa",
                 region_kind="prefix_tree",
-                sum_name=f"{op.output_name.data}[{bit}]",
+                sum_name=f"{output_base}[{bit}]",
                 carry_name=carry_out,
                 lhs=builder.get(lhs_row.get(bit, "1'b0")),
                 rhs=builder.get(rhs_row.get(bit, "1'b0")),
                 cin=builder.get(cin_name),
             )
             builder.ops.append(fa)
-            builder.bind(f"{op.output_name.data}[{bit}]", fa.sum_out)
+            builder.bind(f"{output_base}[{bit}]", fa.sum_out)
             builder.bind(carry_out, fa.carry_out)
 
-    def _lower_kogge_stone(self, op: PrefixTreeOp, builder: _LogicRegionBuilder) -> None:
-        lhs_row = decode_bit_map(op.lhs_row)
-        rhs_row = decode_bit_map(op.rhs_row)
+    def _lower_kogge_stone(
+        self,
+        output_base: str,
+        lhs_row: dict[int, str],
+        rhs_row: dict[int, str],
+        builder: _LogicRegionBuilder,
+    ) -> None:
         max_bit = max(set(lhs_row) | set(rhs_row), default=-1)
         if max_bit < 0:
             return
@@ -424,46 +455,58 @@ class LowerPrefixTreeToLogicPattern(RewritePattern):
             xor_sum = Xor2Op(
                 instance_name=f"pt_b{bit}_xor_sum",
                 region_kind="prefix_tree",
-                output_name=f"{op.output_name.data}[{bit}]",
+                output_name=f"{output_base}[{bit}]",
                 lhs=propagate[bit],
                 rhs=carry_in,
             )
             builder.ops.append(xor_sum)
-            builder.bind(f"{op.output_name.data}[{bit}]", xor_sum.output)
+            builder.bind(f"{output_base}[{bit}]", xor_sum.output)
 
     @op_type_rewrite_pattern
     def match_and_rewrite(self, op: PrefixTreeOp, rewriter: PatternRewriter) -> None:
-        lhs_row = decode_bit_map(op.lhs_row)
-        rhs_row = decode_bit_map(op.rhs_row)
-        input_ports, output_ports = _build_prefix_tree_ports(
-            self.module,
-            lhs_row,
-            rhs_row,
-            op.output_name.data,
-        )
+        input_values = list(op.inputs)
+        output_names = [require_wire_name(result) for result in op.results]
+        input_names = [require_wire_name(value) for value in input_values]
+        input_map = _input_name_map(input_values)
+        input_ports = _build_port_decls_from_values(input_values, kind="input")
+        output_ports = _build_port_decls_from_values(list(op.results), kind="output")
+        port_map = {signal.name: signal for signal in input_ports}
+        lhs_decl = port_map.get("ct_lhs")
+        rhs_decl = port_map.get("ct_rhs")
+        if lhs_decl is None or rhs_decl is None:
+            raise AssertionError(f"Expected ct_lhs/ct_rhs prefix inputs, got {input_names}")
+        lhs_row = {bit: f"{lhs_decl.name}[{bit}]" for bit in range(lhs_decl.width)}
+        rhs_row = {bit: f"{rhs_decl.name}[{bit}]" for bit in range(rhs_decl.width)}
+        if len(output_ports) != 1:
+            raise AssertionError(f"Expected one prefix output bus, got {output_names}")
+        output_base = output_ports[0].name
+
         builder = _LogicRegionBuilder(input_ports, output_ports)
         if op.implementation.data == "ripple":
-            self._lower_ripple(op, builder)
+            self._lower_ripple(output_base, lhs_row, rhs_row, builder)
         elif op.implementation.data == "kogge_stone":
-            self._lower_kogge_stone(op, builder)
+            self._lower_kogge_stone(output_base, lhs_row, rhs_row, builder)
         else:
             raise AssertionError(f"Unsupported prefix tree implementation {op.implementation.data!r}")
+
         func_name, instance_name = self.name_allocator.allocate(op.owner.data)
         func_op = _make_logic_region_func(
             func_name=func_name,
             region_kind=op.owner.data,
-            input_ports=input_ports,
-            output_ports=output_ports,
+            input_ports=builder.input_ports,
+            output_ports=builder.output_ports,
             body_ops=builder.finish(),
         )
         instance_op = _make_instance_op(
             instance_name=instance_name,
             callee=func_name,
             region_kind=op.owner.data,
-            input_ports=input_ports,
-            output_ports=output_ports,
+            inputs=[input_map[name] for name in input_names],
+            input_names=input_names,
+            output_names=[signal.name for signal in output_ports],
+            output_types=[result.type for result in op.results],
         )
-        rewriter.replace_matched_op([instance_op, func_op], safe_erase=True)
+        rewriter.replace_matched_op([instance_op, func_op], new_results=tuple(instance_op.outputs), safe_erase=True)
 
 
 @dataclass(frozen=True)
@@ -474,14 +517,14 @@ class LowerArithToLogicPass(ModulePass):
         del ctx
         name_allocator = _NameAllocator(_read_top_name(op))
         PatternRewriteWalker(
-            LowerPartialProductGeneratorPattern(op, name_allocator),
+            LowerPartialProductGeneratorPattern(name_allocator),
             apply_recursively=True,
         ).rewrite_module(op)
         PatternRewriteWalker(
-            LowerCompressorTreeToLogicPattern(op, name_allocator),
+            LowerCompressorTreeToLogicPattern(name_allocator),
             apply_recursively=True,
         ).rewrite_module(op)
         PatternRewriteWalker(
-            LowerPrefixTreeToLogicPattern(op, name_allocator),
+            LowerPrefixTreeToLogicPattern(name_allocator),
             apply_recursively=True,
         ).rewrite_module(op)
