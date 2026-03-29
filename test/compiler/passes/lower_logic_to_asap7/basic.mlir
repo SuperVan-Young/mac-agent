@@ -18,4 +18,4 @@
     %10, %11 = "logic.full_adder"(%5, %6, %7) {instance_name = "ct_demo_fa"} : (!rtl.wire<"pp_0_2":1>, !rtl.wire<"pp_1_1":1>, !rtl.wire<"C[2]":1>) -> (!rtl.wire<"ct_c2_sum":1>, !rtl.wire<"ct_c3_carry":1>)
     "func.return"(%8, %9, %10, %11) : (!rtl.wire<"ct_c1_sum":1>, !rtl.wire<"ct_c2_carry":1>, !rtl.wire<"ct_c2_sum":1>, !rtl.wire<"ct_c3_carry":1>) -> ()
   }) {logic.region_kind = "arith.compressor_tree", sym_name = "ct", function_type = (!rtl.wire<"pp_0_1":1>, !rtl.wire<"pp_1_0":1>, !rtl.wire<"pp_0_2":1>, !rtl.wire<"pp_1_1":1>, !rtl.wire<"C[2]":1>) -> (!rtl.wire<"ct_c1_sum":1>, !rtl.wire<"ct_c2_carry":1>, !rtl.wire<"ct_c2_sum":1>, !rtl.wire<"ct_c3_carry":1>), sym_visibility = "private"} : () -> ()
-}) {func_name = "mac16x16p32", input_ports = ["input:A:16", "input:B:16", "input:C:32"], output_ports = ["output:D:32"]} : () -> ()
+}) : () -> ()

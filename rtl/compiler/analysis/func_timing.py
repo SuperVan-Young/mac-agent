@@ -6,13 +6,12 @@ from collections import defaultdict, deque
 from dataclasses import dataclass, field
 import re
 
-from xdsl.dialects.builtin import ArrayAttr, ModuleOp, StringAttr
+from xdsl.dialects.builtin import ModuleOp, StringAttr
 from xdsl.dialects.func import FuncOp
 
 from ..dialects.asap7 import And2Op, Ao21Op, Or2Op, Xor2Op
-from ..dialects.logic import ConstantOp, InputPortOp, InstanceOp
-from ..ir import get_wire_width, require_wire_name, signal_decls_from_wires
-from ..signals import SignalDecl, decode_signal_decls
+from ..dialects.logic import ConstantOp, InstanceOp
+from ..ir import PortDecl, get_wire_width, require_wire_name, signal_decls_from_wires
 from .liberty_model import LibertyModel
 
 
@@ -345,19 +344,12 @@ def _trace_port_path(
         cursor = prev_signal
 
 
-def _read_top_signature(module: ModuleOp) -> tuple[list[SignalDecl], list[SignalDecl]]:
+def _read_top_signature(module: ModuleOp) -> tuple[list[PortDecl], list[PortDecl]]:
     top_func = _find_top_func(module)
-    if top_func is not None:
-        _, input_ports, output_ports = _read_func_signature(top_func)
-        return input_ports, output_ports
-
-    input_ports_attr = module.attributes.get("input_ports")
-    output_ports_attr = module.attributes.get("output_ports")
-    if not isinstance(input_ports_attr, ArrayAttr):
-        raise AssertionError("builtin.module is missing 'input_ports'")
-    if not isinstance(output_ports_attr, ArrayAttr):
-        raise AssertionError("builtin.module is missing 'output_ports'")
-    return decode_signal_decls(input_ports_attr), decode_signal_decls(output_ports_attr)
+    if top_func is None:
+        raise AssertionError("Expected exactly one non-private top func.func")
+    _, input_ports, output_ports = _read_func_signature(top_func)
+    return input_ports, output_ports
 
 
 def _find_top_func(module: ModuleOp) -> FuncOp | None:
@@ -373,22 +365,11 @@ def _find_top_func(module: ModuleOp) -> FuncOp | None:
     return top_funcs[0]
 
 
-def _read_func_signature(func_op: FuncOp) -> tuple[str, list[SignalDecl], list[SignalDecl]]:
-    input_ports = signal_decls_from_wires(func_op.args, kind="input")
-    if input_ports:
-        output_ports = signal_decls_from_wires(func_op.function_type.outputs.data, kind="output")
-        return (func_op.sym_name.data, input_ports, output_ports)
-
-    input_ports_attr = func_op.attributes.get("logic.input_ports")
-    output_ports_attr = func_op.attributes.get("logic.output_ports")
-    if not isinstance(input_ports_attr, ArrayAttr):
-        raise AssertionError(f"{func_op.sym_name.data} is missing 'logic.input_ports'")
-    if not isinstance(output_ports_attr, ArrayAttr):
-        raise AssertionError(f"{func_op.sym_name.data} is missing 'logic.output_ports'")
+def _read_func_signature(func_op: FuncOp) -> tuple[str, list[PortDecl], list[PortDecl]]:
     return (
         func_op.sym_name.data,
-        decode_signal_decls(input_ports_attr),
-        decode_signal_decls(output_ports_attr),
+        signal_decls_from_wires(func_op.args),
+        signal_decls_from_wires(func_op.function_type.outputs.data),
     )
 
 
@@ -425,7 +406,7 @@ def _topologically_sort_instances(instance_ops: list[InstanceOp]) -> list[Instan
     return [op_by_name[name] for name in ordered_names]
 
 
-def _expand_signal_decl(signal: SignalDecl) -> tuple[str, ...]:
+def _expand_signal_decl(signal: PortDecl) -> tuple[str, ...]:
     if signal.width == 1:
         return (signal.name,)
     return tuple(f"{signal.name}[{index}]" for index in range(signal.width))
@@ -475,9 +456,6 @@ def _iter_gate_arcs(func_op: FuncOp) -> list[GateArc]:
     input_refs = [ref for signal in input_ports for ref in _expand_signal_decl(signal)]
     value_names: dict = {arg: ref for arg, ref in zip(func_op.args, input_refs)}
     for op in func_op.body.block.ops:
-        if isinstance(op, InputPortOp):
-            value_names[op.output] = require_wire_name(op.output)
-            continue
         if isinstance(op, ConstantOp):
             value_names[op.output] = op.value.data
             continue

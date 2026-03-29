@@ -2,6 +2,7 @@
 
 from .types import RTL_IR_DIALECT, WireType
 from .type_utils import (
+    PortDecl,
     bit_wire_type,
     expand_signal_decl_refs,
     get_wire_dims,
@@ -15,6 +16,7 @@ from .type_utils import (
 __all__ = [
     "RTL_IR_DIALECT",
     "WireType",
+    "PortDecl",
     "bit_wire_type",
     "expand_signal_decl_refs",
     "get_wire_dims",

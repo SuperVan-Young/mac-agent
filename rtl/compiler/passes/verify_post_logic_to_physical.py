@@ -28,7 +28,7 @@ class PostLogicToPhysicalVerificationPass(ModulePass):
             inner.name
             for inner in _walk_ops(op)
             if inner.name.startswith("logic.")
-            and inner.name not in {"logic.instance", "logic.input", "logic.output", "logic.constant"}
+            and inner.name not in {"logic.instance", "logic.constant"}
         ]
         if remaining:
             raise AssertionError(

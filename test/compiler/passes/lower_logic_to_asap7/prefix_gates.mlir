@@ -13,4 +13,4 @@
     %7 = "logic.ao21"(%2, %3, %4) {instance_name = "pt_s0_ao21_g_1"} : (!rtl.wire<"pt_p_1":1>, !rtl.wire<"pt_g_0":1>, !rtl.wire<"pt_g_1":1>) -> !rtl.wire<"pt_s0_g_1":1>
     "func.return"(%5, %6, %7) : (!rtl.wire<"pt_p_0":1>, !rtl.wire<"pt_g_0":1>, !rtl.wire<"pt_s0_g_1":1>) -> ()
   }) {logic.region_kind = "arith.prefix_tree", sym_name = "pt", function_type = (!rtl.wire<"A[0]":1>, !rtl.wire<"B[0]":1>, !rtl.wire<"pt_p_1":1>, !rtl.wire<"pt_g_0":1>, !rtl.wire<"pt_g_1":1>) -> (!rtl.wire<"pt_p_0":1>, !rtl.wire<"pt_g_0":1>, !rtl.wire<"pt_s0_g_1":1>), sym_visibility = "private"} : () -> ()
-}) {func_name = "mac16x16p32", input_ports = ["input:A:4", "input:B:4"], output_ports = ["output:D:4"]} : () -> ()
+}) : () -> ()

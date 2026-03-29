@@ -6,10 +6,8 @@ from .ops import (
     ConstantOp,
     FullAdderOp,
     HalfAdderOp,
-    InputPortOp,
     InstanceOp,
     LOGIC_DIALECT,
-    OutputPortOp,
     Or2Op,
     Xor2Op,
 )
@@ -20,10 +18,8 @@ __all__ = [
     "ConstantOp",
     "FullAdderOp",
     "HalfAdderOp",
-    "InputPortOp",
     "InstanceOp",
     "LOGIC_DIALECT",
-    "OutputPortOp",
     "Or2Op",
     "Xor2Op",
 ]

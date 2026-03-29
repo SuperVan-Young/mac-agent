@@ -5,53 +5,27 @@ from __future__ import annotations
 from collections.abc import Iterable
 import re
 
-from xdsl.dialects.builtin import ArrayAttr, ModuleOp, StringAttr
+from xdsl.dialects.builtin import ModuleOp
 from xdsl.dialects.func import FuncOp, ReturnOp
 
 from ..dialects.asap7 import And2Op, Ao21Op, FullAdderOp, HalfAdderOp, Or2Op, Xor2Op
-from ..dialects.logic import ConstantOp, InputPortOp, InstanceOp, OutputPortOp
-from ..ir import get_wire_width, require_wire_name, signal_decls_from_wires
-from ..signals import SignalDecl, decode_signal_decls
+from ..dialects.logic import ConstantOp, InstanceOp
+from ..ir import PortDecl, get_wire_width, require_wire_name, signal_decls_from_wires
 
 
 _BIT_SELECT_RE = re.compile(r"^(?P<base>[A-Za-z_]\w*)\[(?P<index>\d+)\]$")
-def _read_module_signature(module: ModuleOp) -> tuple[str, list[SignalDecl], list[SignalDecl]]:
+def _read_module_signature(module: ModuleOp) -> tuple[str, list[PortDecl], list[PortDecl]]:
     top_func = _find_top_func(module)
-    if top_func is not None:
-        return _read_func_signature(top_func)
-
-    func_name_attr = module.attributes.get("func_name")
-    input_ports_attr = module.attributes.get("input_ports")
-    output_ports_attr = module.attributes.get("output_ports")
-    if not isinstance(func_name_attr, StringAttr):
-        raise AssertionError("builtin.module is missing string attribute 'func_name'")
-    if not isinstance(input_ports_attr, ArrayAttr):
-        raise AssertionError("builtin.module is missing array attribute 'input_ports'")
-    if not isinstance(output_ports_attr, ArrayAttr):
-        raise AssertionError("builtin.module is missing array attribute 'output_ports'")
-    return (
-        func_name_attr.data,
-        decode_signal_decls(input_ports_attr),
-        decode_signal_decls(output_ports_attr),
-    )
+    if top_func is None:
+        raise AssertionError("Expected exactly one non-private top func.func")
+    return _read_func_signature(top_func)
 
 
-def _read_func_signature(func_op: FuncOp) -> tuple[str, list[SignalDecl], list[SignalDecl]]:
-    input_ports = signal_decls_from_wires(func_op.args, kind="input")
-    if input_ports:
-        output_ports = signal_decls_from_wires(func_op.function_type.outputs.data, kind="output")
-        return (func_op.sym_name.data, input_ports, output_ports)
-
-    input_ports_attr = func_op.attributes.get("logic.input_ports")
-    output_ports_attr = func_op.attributes.get("logic.output_ports")
-    if not isinstance(input_ports_attr, ArrayAttr):
-        raise AssertionError(f"{func_op.sym_name.data} is missing 'logic.input_ports'")
-    if not isinstance(output_ports_attr, ArrayAttr):
-        raise AssertionError(f"{func_op.sym_name.data} is missing 'logic.output_ports'")
+def _read_func_signature(func_op: FuncOp) -> tuple[str, list[PortDecl], list[PortDecl]]:
     return (
         func_op.sym_name.data,
-        decode_signal_decls(input_ports_attr),
-        decode_signal_decls(output_ports_attr),
+        signal_decls_from_wires(func_op.args),
+        signal_decls_from_wires(func_op.function_type.outputs.data),
     )
 
 
@@ -73,9 +47,9 @@ def _func_port_names(func_op: FuncOp) -> tuple[list[str], list[str]]:
     return ([signal.name for signal in input_ports], [signal.name for signal in output_ports])
 
 
-def _emit_port_decl(signal: SignalDecl) -> str:
+def _emit_port_decl(signal: PortDecl, *, kind: str) -> str:
     width = "" if signal.width == 1 else f" [{signal.width - 1}:0]"
-    return f"  {signal.kind}{width} {signal.name};"
+    return f"  {kind}{width} {signal.name};"
 
 
 def _is_literal(signal: str) -> bool:
@@ -107,7 +81,7 @@ def _collect_wire_value(value, declared_ports: set[str], widths: dict[str, int])
     widths[signal] = max(widths.get(signal, 0), get_wire_width(value))
 
 
-def _expand_signal_decl(signal: SignalDecl) -> list[str]:
+def _expand_signal_decl(signal: PortDecl) -> list[str]:
     if signal.width == 1:
         return [signal.name]
     return [f"{signal.name}[{index}]" for index in range(signal.width)]
@@ -205,8 +179,8 @@ def _expand_grouped_port_connections(
 def _emit_module(
     *,
     module_name: str,
-    input_ports: list[SignalDecl],
-    output_ports: list[SignalDecl],
+    input_ports: list[PortDecl],
+    output_ports: list[PortDecl],
     ops: Iterable,
     func_signatures: dict[str, tuple[list[str], list[str]]],
     entry_args: tuple = (),
@@ -257,36 +231,8 @@ def _emit_module(
                     _collect_wire_base(source, declared_ports, wire_widths)
                     assigns.append(f"  assign {target} = {source};")
             continue
-        if isinstance(op, InputPortOp):
-            value_names[op.output] = require_wire_name(op.output)
-            _collect_wire_value(op.output, declared_ports, wire_widths)
-            continue
         if isinstance(op, ConstantOp):
             value_names[op.output] = op.value.data
-            continue
-        if isinstance(op, OutputPortOp):
-            if output_port_index >= len(output_ports):
-                raise AssertionError("Too many logic.output ops for module signature")
-            target_port = output_ports[output_port_index]
-            source = value_names[op.value]
-            source_width = get_wire_width(op.value)
-            if source_width == target_port.width and require_wire_name(op.value) == target_port.name:
-                target = target_port.name
-                output_port_index += 1
-                output_bit_index = 0
-            else:
-                target = (
-                    target_port.name
-                    if target_port.width == 1
-                    else f"{target_port.name}[{output_bit_index}]"
-                )
-                output_bit_index += 1
-                if output_bit_index == target_port.width:
-                    output_port_index += 1
-                    output_bit_index = 0
-            if source != target:
-                _collect_wire_base(source, declared_ports, wire_widths)
-                assigns.append(f"  assign {target} = {source};")
             continue
         if isinstance(op, InstanceOp):
             input_ports_for_op, output_ports_for_op = func_signatures[op.callee.data]
@@ -398,9 +344,9 @@ def _emit_module(
     port_names = ", ".join(signal.name for signal in input_ports + output_ports)
     lines = [f"module {module_name}({port_names});"]
     for signal in input_ports:
-        lines.append(_emit_port_decl(signal))
+        lines.append(_emit_port_decl(signal, kind="input"))
     for signal in output_ports:
-        lines.append(_emit_port_decl(signal))
+        lines.append(_emit_port_decl(signal, kind="output"))
     for wire_name in sorted(wire_widths):
         width = wire_widths[wire_name]
         if width == 1:

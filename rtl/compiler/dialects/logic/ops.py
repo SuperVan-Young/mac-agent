@@ -15,32 +15,14 @@ from xdsl.irdl import (
 )
 
 from ...ir import WireType, bit_wire_type, wire_type
+
+
 def _named_result_types(
     result_type: WireType | None,
     *names: str,
 ) -> tuple[WireType, ...]:
     dims = (1,) if result_type is None else tuple(dim.data for dim in result_type.shape)
     return tuple(wire_type(*dims, name=name) for name in names)
-
-
-@irdl_op_definition
-class InputPortOp(IRDLOperation):
-    name = "logic.input"
-
-    output = result_def(WireType)
-
-    def __init__(self, *, port_name: str, wire_type_: WireType | None = None) -> None:
-        super().__init__(result_types=(_named_result_types(wire_type_, port_name)[0],))
-
-
-@irdl_op_definition
-class OutputPortOp(IRDLOperation):
-    name = "logic.output"
-
-    value = operand_def(WireType)
-
-    def __init__(self, *, value: SSAValue) -> None:
-        super().__init__(operands=(value,))
 
 
 @irdl_op_definition
@@ -257,8 +239,6 @@ class InstanceOp(IRDLOperation):
 LOGIC_DIALECT = Dialect(
     "logic",
     [
-        InputPortOp,
-        OutputPortOp,
         ConstantOp,
         And2Op,
         Or2Op,

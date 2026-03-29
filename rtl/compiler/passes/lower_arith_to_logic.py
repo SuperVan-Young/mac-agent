@@ -34,8 +34,7 @@ from ..dialects.logic import (
     InstanceOp,
     Xor2Op,
 )
-from ..ir import bit_wire_type, expand_signal_decl_refs, get_wire_width, require_wire_name, wire_type
-from ..signals import SignalDecl
+from ..ir import PortDecl, bit_wire_type, expand_signal_decl_refs, get_wire_width, require_wire_name, wire_type
 from .lower_multiplier_to_arith_parts import _plan_compressor_tree
 
 
@@ -85,9 +84,9 @@ def _is_literal(signal: str) -> bool:
     return "'" in signal or signal.isdigit()
 
 
-def _build_port_decls_from_values(values: list[SSAValue], *, kind: str) -> list[SignalDecl]:
+def _build_port_decls_from_values(values: list[SSAValue]) -> list[PortDecl]:
     return [
-        SignalDecl(name=require_wire_name(value), width=get_wire_width(value), kind=kind)
+        PortDecl(name=require_wire_name(value), width=get_wire_width(value))
         for value in values
     ]
 
@@ -95,8 +94,8 @@ def _build_port_decls_from_values(values: list[SSAValue], *, kind: str) -> list[
 class _LogicRegionBuilder:
     def __init__(
         self,
-        input_ports: list[SignalDecl],
-        output_ports: list[SignalDecl],
+        input_ports: list[PortDecl],
+        output_ports: list[PortDecl],
         block_args: tuple[SSAValue, ...],
     ) -> None:
         self.input_ports = input_ports
@@ -138,8 +137,8 @@ def _make_logic_region_func(
     *,
     func_name: str,
     region_kind: str,
-    input_ports: list[SignalDecl],
-    output_ports: list[SignalDecl],
+    input_ports: list[PortDecl],
+    output_ports: list[PortDecl],
  ) -> FuncOp:
     input_refs = [ref for signal in input_ports for ref in expand_signal_decl_refs(signal)]
     output_refs = [ref for signal in output_ports for ref in expand_signal_decl_refs(signal)]
@@ -212,8 +211,8 @@ class LowerPartialProductGeneratorPattern(RewritePattern):
             raise AssertionError(f"Expected two PPG input bases, got {base_names}")
         lhs_base, rhs_base = base_names
 
-        input_ports = _build_port_decls_from_values(input_values, kind="input")
-        output_ports = _build_port_decls_from_values(list(op.results), kind="output")
+        input_ports = _build_port_decls_from_values(input_values)
+        output_ports = _build_port_decls_from_values(list(op.results))
         func_name, instance_name = self.name_allocator.allocate(op.owner.data)
         func_op = _make_logic_region_func(
             func_name=func_name,
@@ -258,7 +257,7 @@ class LowerCompressorTreeToLogicPattern(RewritePattern):
     def match_and_rewrite(self, op: CompressorTreeOp, rewriter: PatternRewriter) -> None:
         input_values = list(op.inputs)
         output_names = [require_wire_name(result) for result in op.results]
-        input_ports = _build_port_decls_from_values(input_values, kind="input")
+        input_ports = _build_port_decls_from_values(input_values)
         input_names = [ref for signal in input_ports for ref in expand_signal_decl_refs(signal)]
 
         columns: dict[int, list[str]] = defaultdict(list)
@@ -275,7 +274,7 @@ class LowerCompressorTreeToLogicPattern(RewritePattern):
             raise AssertionError(f"Unsupported compressor input {name!r}")
 
         stage_ops, lhs_row, rhs_row = _plan_compressor_tree(dict(columns))
-        output_ports = _build_port_decls_from_values(list(op.results), kind="output")
+        output_ports = _build_port_decls_from_values(list(op.results))
         func_name, instance_name = self.name_allocator.allocate(op.owner.data)
         func_op = _make_logic_region_func(
             func_name=func_name,
@@ -448,8 +447,8 @@ class LowerPrefixTreeToLogicPattern(RewritePattern):
         input_values = list(op.inputs)
         output_names = [require_wire_name(result) for result in op.results]
         input_names = [require_wire_name(value) for value in input_values]
-        input_ports = _build_port_decls_from_values(input_values, kind="input")
-        output_ports = _build_port_decls_from_values(list(op.results), kind="output")
+        input_ports = _build_port_decls_from_values(input_values)
+        output_ports = _build_port_decls_from_values(list(op.results))
         port_map = {signal.name: signal for signal in input_ports}
         lhs_decl = port_map.get("ct_lhs")
         rhs_decl = port_map.get("ct_rhs")
