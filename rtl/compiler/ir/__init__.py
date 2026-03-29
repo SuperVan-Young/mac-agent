@@ -8,6 +8,7 @@ from .type_utils import (
     get_wire_name,
     get_wire_width,
     require_wire_name,
+    signal_decls_from_wires,
     wire_type,
 )
 
@@ -20,5 +21,6 @@ __all__ = [
     "get_wire_name",
     "get_wire_width",
     "require_wire_name",
+    "signal_decls_from_wires",
     "wire_type",
 ]

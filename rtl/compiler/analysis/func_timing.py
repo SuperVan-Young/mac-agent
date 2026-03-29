@@ -11,13 +11,11 @@ from xdsl.dialects.func import FuncOp
 
 from ..dialects.asap7 import And2Op, Ao21Op, Or2Op, Xor2Op
 from ..dialects.logic import ConstantOp, InputPortOp, InstanceOp
-from ..ir import require_wire_name
+from ..ir import get_wire_width, require_wire_name, signal_decls_from_wires
 from ..signals import SignalDecl, decode_signal_decls
 from .liberty_model import LibertyModel
 
 
-_LOGIC_INPUT_PORTS_ATTR = "logic.input_ports"
-_LOGIC_OUTPUT_PORTS_ATTR = "logic.output_ports"
 _LOGIC_REGION_KIND_ATTR = "logic.region_kind"
 _BIT_SELECT_RE = re.compile(r"^(?P<base>[A-Za-z_]\w*)\[(?P<index>\d+)\]$")
 FUNC_TIMING_CRITICAL_PORT_PAIRS_ATTR = "timing.critical_port_pairs"
@@ -113,14 +111,18 @@ class ModuleTimingAnalysis:
 
 
 def analyze_module_timing(module: ModuleOp, liberty_model: LibertyModel) -> ModuleTimingAnalysis:
+    top_func = _find_top_func(module)
     func_ops = {func_op.sym_name.data: func_op for func_op in module.ops if isinstance(func_op, FuncOp)}
+    if top_func is not None:
+        func_ops.pop(top_func.sym_name.data, None)
     internal_input_loads = {
         name: _compute_internal_input_loads(func_op, liberty_model)
         for name, func_op in func_ops.items()
     }
+    top_ops = top_func.body.block.ops if top_func is not None else module.ops
 
     top_net_loads: dict[str, float] = defaultdict(float)
-    for op in module.ops:
+    for op in top_ops:
         if not isinstance(op, InstanceOp):
             continue
         input_port_names, _ = _instance_port_names(func_ops, op)
@@ -128,14 +130,14 @@ def analyze_module_timing(module: ModuleOp, liberty_model: LibertyModel) -> Modu
             top_net_loads[top_ref] += internal_input_loads[op.callee.data].get(port_name, 0.0)
 
     external_loads: dict[str, dict[str, float]] = {name: defaultdict(float) for name in func_ops}
-    for op in module.ops:
+    for op in top_ops:
         if not isinstance(op, InstanceOp):
             continue
         _, output_port_names = _instance_port_names(func_ops, op)
         for port_name, top_ref in _expand_grouped_port_refs(output_port_names, op.outputs):
             external_loads[op.callee.data][port_name] += top_net_loads.get(top_ref, 0.0)
 
-    instance_ops = [op for op in module.ops if isinstance(op, InstanceOp)]
+    instance_ops = [op for op in top_ops if isinstance(op, InstanceOp)]
     top_net_arrivals: dict[str, float] = {}
     top_net_slews: dict[str, float] = {}
     top_input_ports, _ = _read_top_signature(module)
@@ -344,6 +346,11 @@ def _trace_port_path(
 
 
 def _read_top_signature(module: ModuleOp) -> tuple[list[SignalDecl], list[SignalDecl]]:
+    top_func = _find_top_func(module)
+    if top_func is not None:
+        _, input_ports, output_ports = _read_func_signature(top_func)
+        return input_ports, output_ports
+
     input_ports_attr = module.attributes.get("input_ports")
     output_ports_attr = module.attributes.get("output_ports")
     if not isinstance(input_ports_attr, ArrayAttr):
@@ -353,13 +360,31 @@ def _read_top_signature(module: ModuleOp) -> tuple[list[SignalDecl], list[Signal
     return decode_signal_decls(input_ports_attr), decode_signal_decls(output_ports_attr)
 
 
+def _find_top_func(module: ModuleOp) -> FuncOp | None:
+    top_funcs = [
+        op
+        for op in module.ops
+        if isinstance(op, FuncOp) and (op.sym_visibility is None or op.sym_visibility.data != "private")
+    ]
+    if not top_funcs:
+        return None
+    if len(top_funcs) != 1:
+        raise AssertionError("Expected exactly one non-private top func.func")
+    return top_funcs[0]
+
+
 def _read_func_signature(func_op: FuncOp) -> tuple[str, list[SignalDecl], list[SignalDecl]]:
-    input_ports_attr = func_op.attributes.get(_LOGIC_INPUT_PORTS_ATTR)
-    output_ports_attr = func_op.attributes.get(_LOGIC_OUTPUT_PORTS_ATTR)
+    input_ports = signal_decls_from_wires(func_op.args, kind="input")
+    if input_ports:
+        output_ports = signal_decls_from_wires(func_op.function_type.outputs.data, kind="output")
+        return (func_op.sym_name.data, input_ports, output_ports)
+
+    input_ports_attr = func_op.attributes.get("logic.input_ports")
+    output_ports_attr = func_op.attributes.get("logic.output_ports")
     if not isinstance(input_ports_attr, ArrayAttr):
-        raise AssertionError(f"{func_op.sym_name.data} is missing {_LOGIC_INPUT_PORTS_ATTR!r}")
+        raise AssertionError(f"{func_op.sym_name.data} is missing 'logic.input_ports'")
     if not isinstance(output_ports_attr, ArrayAttr):
-        raise AssertionError(f"{func_op.sym_name.data} is missing {_LOGIC_OUTPUT_PORTS_ATTR!r}")
+        raise AssertionError(f"{func_op.sym_name.data} is missing 'logic.output_ports'")
     return (
         func_op.sym_name.data,
         decode_signal_decls(input_ports_attr),
@@ -409,6 +434,7 @@ def _expand_signal_decl(signal: SignalDecl) -> tuple[str, ...]:
 def _expand_grouped_port_refs(port_names: list[str], values) -> list[tuple[str, str]]:
     connections: list[tuple[str, str]] = []
     signal_refs = [require_wire_name(value) for value in values]
+    signal_widths = [get_wire_width(value) for value in values]
     used: set[int] = set()
     for port_name in port_names:
         exact = [(idx, signal) for idx, signal in enumerate(signal_refs) if signal == port_name and idx not in used]
@@ -423,7 +449,11 @@ def _expand_grouped_port_refs(port_names: list[str], values) -> list[tuple[str, 
         if exact:
             idx, signal = exact[0]
             used.add(idx)
-            connections.append((port_name, signal))
+            width = signal_widths[idx]
+            if width == 1:
+                connections.append((port_name, signal))
+                continue
+            connections.extend((f"{port_name}[{index}]", f"{signal}[{index}]") for index in range(width))
             continue
         if not indexed:
             fallback = next((idx for idx in range(len(signal_refs)) if idx not in used), None)

@@ -10,16 +10,16 @@ from xdsl.dialects.func import FuncOp, ReturnOp
 
 from ..dialects.asap7 import And2Op, Ao21Op, FullAdderOp, HalfAdderOp, Or2Op, Xor2Op
 from ..dialects.logic import ConstantOp, InputPortOp, InstanceOp, OutputPortOp
-from ..ir import get_wire_width, require_wire_name
+from ..ir import get_wire_width, require_wire_name, signal_decls_from_wires
 from ..signals import SignalDecl, decode_signal_decls
 
 
 _BIT_SELECT_RE = re.compile(r"^(?P<base>[A-Za-z_]\w*)\[(?P<index>\d+)\]$")
-_LOGIC_INPUT_PORTS_ATTR = "logic.input_ports"
-_LOGIC_OUTPUT_PORTS_ATTR = "logic.output_ports"
-
-
 def _read_module_signature(module: ModuleOp) -> tuple[str, list[SignalDecl], list[SignalDecl]]:
+    top_func = _find_top_func(module)
+    if top_func is not None:
+        return _read_func_signature(top_func)
+
     func_name_attr = module.attributes.get("func_name")
     input_ports_attr = module.attributes.get("input_ports")
     output_ports_attr = module.attributes.get("output_ports")
@@ -37,17 +37,35 @@ def _read_module_signature(module: ModuleOp) -> tuple[str, list[SignalDecl], lis
 
 
 def _read_func_signature(func_op: FuncOp) -> tuple[str, list[SignalDecl], list[SignalDecl]]:
-    input_ports_attr = func_op.attributes.get(_LOGIC_INPUT_PORTS_ATTR)
-    output_ports_attr = func_op.attributes.get(_LOGIC_OUTPUT_PORTS_ATTR)
+    input_ports = signal_decls_from_wires(func_op.args, kind="input")
+    if input_ports:
+        output_ports = signal_decls_from_wires(func_op.function_type.outputs.data, kind="output")
+        return (func_op.sym_name.data, input_ports, output_ports)
+
+    input_ports_attr = func_op.attributes.get("logic.input_ports")
+    output_ports_attr = func_op.attributes.get("logic.output_ports")
     if not isinstance(input_ports_attr, ArrayAttr):
-        raise AssertionError(f"{func_op.sym_name.data} is missing {_LOGIC_INPUT_PORTS_ATTR!r}")
+        raise AssertionError(f"{func_op.sym_name.data} is missing 'logic.input_ports'")
     if not isinstance(output_ports_attr, ArrayAttr):
-        raise AssertionError(f"{func_op.sym_name.data} is missing {_LOGIC_OUTPUT_PORTS_ATTR!r}")
+        raise AssertionError(f"{func_op.sym_name.data} is missing 'logic.output_ports'")
     return (
         func_op.sym_name.data,
         decode_signal_decls(input_ports_attr),
         decode_signal_decls(output_ports_attr),
     )
+
+
+def _find_top_func(module: ModuleOp) -> FuncOp | None:
+    top_funcs = [
+        op
+        for op in module.ops
+        if isinstance(op, FuncOp) and (op.sym_visibility is None or op.sym_visibility.data != "private")
+    ]
+    if not top_funcs:
+        return None
+    if len(top_funcs) != 1:
+        raise AssertionError("Expected exactly one non-private top func.func")
+    return top_funcs[0]
 
 
 def _func_port_names(func_op: FuncOp) -> tuple[list[str], list[str]]:
@@ -202,9 +220,13 @@ def _emit_module(
     output_bit_index = 0
     input_refs = [ref for signal in input_ports for ref in _expand_signal_decl(signal)]
     if entry_args:
-        if len(entry_args) != len(input_refs):
+        if len(entry_args) == len(input_ports):
+            refs = [signal.name for signal in input_ports]
+        elif len(entry_args) == len(input_refs):
+            refs = input_refs
+        else:
             raise AssertionError(f"{module_name} block args do not match input signature")
-        for arg, ref in zip(entry_args, input_refs):
+        for arg, ref in zip(entry_args, refs):
             value_names[arg] = ref
 
     for op in ops:
@@ -216,15 +238,21 @@ def _emit_module(
                     raise AssertionError("Too many func.return values for module signature")
                 target_port = output_ports[output_port_index]
                 source = value_names[value]
-                target = (
-                    target_port.name
-                    if target_port.width == 1
-                    else f"{target_port.name}[{output_bit_index}]"
-                )
-                output_bit_index += 1
-                if output_bit_index == target_port.width:
+                source_width = get_wire_width(value)
+                if source_width == target_port.width:
+                    target = target_port.name
                     output_port_index += 1
                     output_bit_index = 0
+                else:
+                    target = (
+                        target_port.name
+                        if target_port.width == 1
+                        else f"{target_port.name}[{output_bit_index}]"
+                    )
+                    output_bit_index += 1
+                    if output_bit_index == target_port.width:
+                        output_port_index += 1
+                        output_bit_index = 0
                 if source != target:
                     _collect_wire_base(source, declared_ports, wire_widths)
                     assigns.append(f"  assign {target} = {source};")
@@ -391,12 +419,13 @@ def _emit_module(
 
 def emit_verilog(module: ModuleOp) -> str:
     top_name, input_ports, output_ports = _read_module_signature(module)
+    top_func = _find_top_func(module)
     func_signatures = {
         func_op.sym_name.data: _func_port_names(func_op)
         for func_op in module.ops
         if isinstance(func_op, FuncOp)
     }
-    top_ops = [op for op in module.ops if not isinstance(op, FuncOp)]
+    top_ops = top_func.body.block.ops if top_func is not None else [op for op in module.ops if not isinstance(op, FuncOp)]
     lines = [
         _emit_module(
             module_name=top_name,
@@ -404,11 +433,14 @@ def emit_verilog(module: ModuleOp) -> str:
             output_ports=output_ports,
             ops=top_ops,
             func_signatures=func_signatures,
+            entry_args=top_func.args if top_func is not None else (),
         )
     ]
 
     for op in module.ops:
         if not isinstance(op, FuncOp):
+            continue
+        if op is top_func:
             continue
         func_name, func_inputs, func_outputs = _read_func_signature(op)
         lines.append("")

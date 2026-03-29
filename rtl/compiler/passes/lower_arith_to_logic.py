@@ -9,7 +9,7 @@ import re
 from xdsl.context import Context
 from xdsl.dialects.builtin import ModuleOp, StringAttr
 from xdsl.dialects.func import FuncOp, ReturnOp
-from xdsl.ir import SSAValue
+from xdsl.ir import Operation, SSAValue
 from xdsl.passes import ModulePass
 from xdsl.pattern_rewriter import (
     PatternRewriter,
@@ -17,8 +17,14 @@ from xdsl.pattern_rewriter import (
     RewritePattern,
     op_type_rewrite_pattern,
 )
+from xdsl.rewriter import InsertPoint
 
-from ..dialects.arith import CompressorTreeOp, PartialProductGeneratorOp, PrefixTreeOp
+from ..dialects.arith import (
+    CompressorTreeOp,
+    PartialProductGeneratorOp,
+    PrefixTreeImplementation,
+    PrefixTreeOp,
+)
 from ..dialects.logic import (
     And2Op,
     Ao21Op,
@@ -29,7 +35,7 @@ from ..dialects.logic import (
     Xor2Op,
 )
 from ..ir import bit_wire_type, expand_signal_decl_refs, get_wire_width, require_wire_name, wire_type
-from ..signals import SignalDecl, encode_signal_decls
+from ..signals import SignalDecl
 from .lower_multiplier_to_arith_parts import _plan_compressor_tree
 
 
@@ -37,15 +43,38 @@ _BIT_SELECT_RE = re.compile(r"^(?P<base>[A-Za-z_]\w*)\[(?P<index>\d+)\]$")
 _PP_NAME_RE = re.compile(r"^pp_(?P<lhs>\d+)_(?P<rhs>\d+)$")
 _ROW_NAME_RE = re.compile(r"^(?P<base>[A-Za-z_]\w*)\[(?P<index>\d+)\]$")
 _LOGIC_REGION_KIND_ATTR = "logic.region_kind"
-_LOGIC_INPUT_PORTS_ATTR = "logic.input_ports"
-_LOGIC_OUTPUT_PORTS_ATTR = "logic.output_ports"
 
 
 def _read_top_name(module: ModuleOp) -> str:
+    top_func = _find_top_func(module)
+    if top_func is not None:
+        return top_func.sym_name.data
     func_name_attr = module.attributes.get("func_name")
     if not isinstance(func_name_attr, StringAttr):
         raise AssertionError("builtin.module is missing string attribute 'func_name'")
     return func_name_attr.data
+
+
+def _find_top_func(module: ModuleOp) -> FuncOp | None:
+    top_funcs = [
+        op
+        for op in module.ops
+        if isinstance(op, FuncOp) and (op.sym_visibility is None or op.sym_visibility.data != "private")
+    ]
+    if not top_funcs:
+        return None
+    if len(top_funcs) != 1:
+        raise AssertionError("Expected exactly one non-private top func.func")
+    return top_funcs[0]
+
+
+def _enclosing_module(op: Operation) -> ModuleOp:
+    parent = op.parent_op()
+    while parent is not None:
+        if isinstance(parent, ModuleOp):
+            return parent
+        parent = parent.parent_op()
+    raise AssertionError(f"Failed to find enclosing builtin.module for {op.name!r}")
 
 
 def _short_region_kind(region_kind: str) -> str:
@@ -54,27 +83,6 @@ def _short_region_kind(region_kind: str) -> str:
 
 def _is_literal(signal: str) -> bool:
     return "'" in signal or signal.isdigit()
-
-
-def _build_port_decls(signals: list[str], *, kind: str) -> list[SignalDecl]:
-    order: list[str] = []
-    widths: dict[str, int] = {}
-    for signal in signals:
-        if _is_literal(signal):
-            continue
-        match = _BIT_SELECT_RE.match(signal)
-        if match is not None:
-            base = match.group("base")
-            width = int(match.group("index")) + 1
-        else:
-            base = signal
-            width = 1
-        if base not in widths:
-            order.append(base)
-            widths[base] = width
-        else:
-            widths[base] = max(widths[base], width)
-    return [SignalDecl(name=name, width=widths[name], kind=kind) for name in order]
 
 
 def _build_port_decls_from_values(values: list[SSAValue], *, kind: str) -> list[SignalDecl]:
@@ -144,8 +152,6 @@ def _make_logic_region_func(
         visibility="private",
     )
     func_op.attributes[_LOGIC_REGION_KIND_ATTR] = StringAttr(region_kind)
-    func_op.attributes[_LOGIC_INPUT_PORTS_ATTR] = encode_signal_decls(input_ports)
-    func_op.attributes[_LOGIC_OUTPUT_PORTS_ATTR] = encode_signal_decls(output_ports)
     return func_op
 
 
@@ -162,10 +168,6 @@ def _make_instance_op(
         inputs=inputs,
         output_types=output_types,
     )
-
-
-def _input_name_map(values: list[SSAValue]) -> dict[str, SSAValue]:
-    return {require_wire_name(value): value for value in values}
 
 
 def _group_rows(names: list[str]) -> dict[str, dict[int, str]]:
@@ -204,14 +206,13 @@ class LowerPartialProductGeneratorPattern(RewritePattern):
         input_values = list(op.inputs)
         output_names = [require_wire_name(result) for result in op.results]
         input_names = [require_wire_name(value) for value in input_values]
-        input_map = _input_name_map(input_values)
 
         base_names = sorted({name.split("[", 1)[0] for name in input_names})
         if len(base_names) != 2:
             raise AssertionError(f"Expected two PPG input bases, got {base_names}")
         lhs_base, rhs_base = base_names
 
-        input_ports = _build_port_decls(input_names, kind="input")
+        input_ports = _build_port_decls_from_values(input_values, kind="input")
         output_ports = _build_port_decls_from_values(list(op.results), kind="output")
         func_name, instance_name = self.name_allocator.allocate(op.owner.data)
         func_op = _make_logic_region_func(
@@ -238,13 +239,14 @@ class LowerPartialProductGeneratorPattern(RewritePattern):
 
         for inner_op in builder.finish():
             func_op.body.block.add_op(inner_op)
+        rewriter.insert_op(func_op, InsertPoint.at_end(_enclosing_module(op).body.block))
         instance_op = _make_instance_op(
             instance_name=instance_name,
             callee=func_name,
-            inputs=[input_map[name] for name in input_names],
+            inputs=input_values,
             output_types=[result.type for result in op.results],
         )
-        rewriter.replace_matched_op([instance_op, func_op], new_results=tuple(instance_op.outputs), safe_erase=True)
+        rewriter.replace_matched_op(instance_op, new_results=tuple(instance_op.outputs), safe_erase=True)
 
 
 class LowerCompressorTreeToLogicPattern(RewritePattern):
@@ -256,8 +258,8 @@ class LowerCompressorTreeToLogicPattern(RewritePattern):
     def match_and_rewrite(self, op: CompressorTreeOp, rewriter: PatternRewriter) -> None:
         input_values = list(op.inputs)
         output_names = [require_wire_name(result) for result in op.results]
-        input_names = [require_wire_name(value) for value in input_values]
-        input_map = _input_name_map(input_values)
+        input_ports = _build_port_decls_from_values(input_values, kind="input")
+        input_names = [ref for signal in input_ports for ref in expand_signal_decl_refs(signal)]
 
         columns: dict[int, list[str]] = defaultdict(list)
         for name in input_names:
@@ -273,7 +275,6 @@ class LowerCompressorTreeToLogicPattern(RewritePattern):
             raise AssertionError(f"Unsupported compressor input {name!r}")
 
         stage_ops, lhs_row, rhs_row = _plan_compressor_tree(dict(columns))
-        input_ports = _build_port_decls(input_names, kind="input")
         output_ports = _build_port_decls_from_values(list(op.results), kind="output")
         func_name, instance_name = self.name_allocator.allocate(op.owner.data)
         func_op = _make_logic_region_func(
@@ -323,13 +324,14 @@ class LowerCompressorTreeToLogicPattern(RewritePattern):
 
         for inner_op in builder.finish():
             func_op.body.block.add_op(inner_op)
+        rewriter.insert_op(func_op, InsertPoint.at_end(_enclosing_module(op).body.block))
         instance_op = _make_instance_op(
             instance_name=instance_name,
             callee=func_name,
-            inputs=[input_map[name] for name in input_names],
+            inputs=input_values,
             output_types=[result.type for result in op.results],
         )
-        rewriter.replace_matched_op([instance_op, func_op], new_results=tuple(instance_op.outputs), safe_erase=True)
+        rewriter.replace_matched_op(instance_op, new_results=tuple(instance_op.outputs), safe_erase=True)
 
 
 class LowerPrefixTreeToLogicPattern(RewritePattern):
@@ -446,7 +448,6 @@ class LowerPrefixTreeToLogicPattern(RewritePattern):
         input_values = list(op.inputs)
         output_names = [require_wire_name(result) for result in op.results]
         input_names = [require_wire_name(value) for value in input_values]
-        input_map = _input_name_map(input_values)
         input_ports = _build_port_decls_from_values(input_values, kind="input")
         output_ports = _build_port_decls_from_values(list(op.results), kind="output")
         port_map = {signal.name: signal for signal in input_ports}
@@ -468,22 +469,24 @@ class LowerPrefixTreeToLogicPattern(RewritePattern):
             output_ports=output_ports,
         )
         builder = _LogicRegionBuilder(input_ports, output_ports, func_op.args)
-        if op.implementation.data == "ripple":
+        implementation = PrefixTreeImplementation(op.implementation.value.data)
+        if implementation == PrefixTreeImplementation.RIPPLE:
             self._lower_ripple(output_base, lhs_row, rhs_row, builder)
-        elif op.implementation.data == "kogge_stone":
+        elif implementation == PrefixTreeImplementation.KOGGE_STONE:
             self._lower_kogge_stone(output_base, lhs_row, rhs_row, builder)
         else:
-            raise AssertionError(f"Unsupported prefix tree implementation {op.implementation.data!r}")
+            raise AssertionError(f"Unsupported prefix tree implementation {op.implementation.value.data!r}")
 
         for inner_op in builder.finish():
             func_op.body.block.add_op(inner_op)
+        rewriter.insert_op(func_op, InsertPoint.at_end(_enclosing_module(op).body.block))
         instance_op = _make_instance_op(
             instance_name=instance_name,
             callee=func_name,
-            inputs=[input_map[name] for name in input_names],
+            inputs=input_values,
             output_types=[result.type for result in op.results],
         )
-        rewriter.replace_matched_op([instance_op, func_op], new_results=tuple(instance_op.outputs), safe_erase=True)
+        rewriter.replace_matched_op(instance_op, new_results=tuple(instance_op.outputs), safe_erase=True)
 
 
 @dataclass(frozen=True)

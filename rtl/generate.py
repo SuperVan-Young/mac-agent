@@ -31,9 +31,29 @@ DEFAULT_COMPRESSOR_OPT_ITERATIONS = 3
 
 
 def _build_default_mlir(top_name: str) -> str:
+    arg_bindings = ', '.join(
+        [
+            '%0: !rtl.wire<"A":16>',
+            '%1: !rtl.wire<"B":16>',
+            '%2: !rtl.wire<"C":32>',
+        ]
+    )
+    operand_types = ', '.join(
+        [
+            '!rtl.wire<"A":16>',
+            '!rtl.wire<"B":16>',
+            '!rtl.wire<"C":32>',
+        ]
+    )
+    result_binding = "%3"
+    result_type = '!rtl.wire<"D":32>'
     return f'''"builtin.module"() ({{
-  "arith.multiplier"() {{implementation = "array"}} : () -> ()
-}}) {{func_name = "{top_name}", input_ports = ["input:A:16", "input:B:16", "input:C:32"], output_ports = ["output:D:32"]}} : () -> ()
+  "func.func"() ({{
+  ^bb0({arg_bindings}):
+    {result_binding} = "arith.multiplier"(%0, %1, %2) {{implementation = #arith.multiplier_impl<array>}} : ({operand_types}) -> {result_type}
+    "func.return"({result_binding}) : ({result_type}) -> ()
+  }}) {{sym_name = "{top_name}", function_type = ({operand_types}) -> {result_type}}} : () -> ()
+}}) : () -> ()
 '''
 
 

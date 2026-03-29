@@ -17,5 +17,5 @@
 "builtin.module"() ({
   %0 = "logic.input"() : () -> !rtl.wire<"ct_lhs":4>
   %1 = "logic.input"() : () -> !rtl.wire<"ct_rhs":4>
-  %2 = "arith.prefix_tree"(%0, %1) {implementation = "kogge_stone", owner = "arith.prefix_tree"} : (!rtl.wire<"ct_lhs":4>, !rtl.wire<"ct_rhs":4>) -> !rtl.wire<"D":4>
+  %2 = "arith.prefix_tree"(%0, %1) {implementation = #arith.prefix_impl<kogge_stone>, owner = "arith.prefix_tree"} : (!rtl.wire<"ct_lhs":4>, !rtl.wire<"ct_rhs":4>) -> !rtl.wire<"D":4>
 }) {func_name = "mac16x16p32", input_ports = ["input:ct_lhs:4", "input:ct_rhs:4"], output_ports = ["output:D:4"]} : () -> ()

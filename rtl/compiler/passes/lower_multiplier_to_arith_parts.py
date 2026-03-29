@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from xdsl.context import Context
-from xdsl.dialects.builtin import ArrayAttr, ModuleOp, StringAttr
+from xdsl.dialects.builtin import ModuleOp
 from xdsl.passes import ModulePass
 from xdsl.pattern_rewriter import (
     PatternRewriter,
@@ -16,23 +16,14 @@ from xdsl.pattern_rewriter import (
 
 from ..dialects.arith import (
     CompressorTreeOp,
+    CompressorTreeImplementation,
     MultiplierOp,
     PartialProductGeneratorOp,
+    PartialProductGeneratorImplementation,
     PrefixTreeOp,
+    PrefixTreeImplementation,
 )
-from ..dialects.logic import InputPortOp, OutputPortOp
-from ..ir import wire_type
-from ..signals import decode_signal_decls
-
-
-def _read_module_ports(module: ModuleOp) -> tuple[list, list]:
-    input_ports_attr = module.attributes.get("input_ports")
-    output_ports_attr = module.attributes.get("output_ports")
-    if not isinstance(input_ports_attr, ArrayAttr):
-        raise AssertionError("builtin.module is missing array attribute 'input_ports'")
-    if not isinstance(output_ports_attr, ArrayAttr):
-        raise AssertionError("builtin.module is missing array attribute 'output_ports'")
-    return decode_signal_decls(input_ports_attr), decode_signal_decls(output_ports_attr)
+from ..ir import get_wire_width, require_wire_name, wire_type
 
 
 def _build_dadda_targets(max_height: int) -> list[int]:
@@ -152,73 +143,66 @@ def _plan_compressor_tree(
 
 
 class LowerMultiplierToArithPartsPattern(RewritePattern):
-    def __init__(self, module: ModuleOp) -> None:
-        super().__init__()
-        self.module = module
-
     @op_type_rewrite_pattern
     def match_and_rewrite(self, op: MultiplierOp, rewriter: PatternRewriter) -> None:
-        input_ports, output_ports = _read_module_ports(self.module)
-        if len(input_ports) < 3 or not output_ports:
-            raise AssertionError("arith.multiplier expects inputs A/B/C and one output")
+        if len(op.inputs) != 3 or len(op.results) != 1:
+            raise AssertionError("arith.multiplier expects three bus operands and one bus result")
 
-        lhs_port = input_ports[0]
-        rhs_port = input_ports[1]
-        addend_port = input_ports[2]
-        output_port = output_ports[0]
+        lhs_value, rhs_value, addend_value = op.inputs
+        lhs_port = require_wire_name(lhs_value)
+        rhs_port = require_wire_name(rhs_value)
+        addend_port = require_wire_name(addend_value)
+        if len(op.results) != 1:
+            raise AssertionError("arith.multiplier currently expects a single bus result")
+        output_port = require_wire_name(op.results[0]).split("[", 1)[0]
+        output_width = get_wire_width(op.results[0])
+        lhs_width = get_wire_width(lhs_value)
+        rhs_width = get_wire_width(rhs_value)
+        addend_width = get_wire_width(addend_value)
 
         columns: dict[int, list[str]] = {}
-        lhs_inputs = [InputPortOp(port_name=f"{lhs_port.name}[{bit}]") for bit in range(lhs_port.width)]
-        rhs_inputs = [InputPortOp(port_name=f"{rhs_port.name}[{bit}]") for bit in range(rhs_port.width)]
-        addend_inputs = [InputPortOp(port_name=f"{addend_port.name}[{bit}]") for bit in range(addend_port.width)]
         ppg_output_names: list[str] = []
-        for lhs_bit in range(lhs_port.width):
-            for rhs_bit in range(rhs_port.width):
+        for lhs_bit in range(lhs_width):
+            for rhs_bit in range(rhs_width):
                 column = lhs_bit + rhs_bit
-                if column >= output_port.width:
+                if column >= output_width:
                     continue
                 pp_name = f"pp_{lhs_bit}_{rhs_bit}"
                 ppg_output_names.append(pp_name)
                 columns.setdefault(column, []).append(pp_name)
 
-        for bit in range(min(addend_port.width, output_port.width)):
-            columns.setdefault(bit, []).append(f"{addend_port.name}[{bit}]")
+        for bit in range(min(addend_width, output_width)):
+            columns.setdefault(bit, []).append(f"{addend_port}[{bit}]")
 
         compressor_output_names = ["ct_lhs", "ct_rhs"]
-        prefix_output_names = [output_port.name]
+        prefix_output_names = [output_port]
 
         ppg = PartialProductGeneratorOp(
-            implementation="and_grid",
-            inputs=[*(input_op.output for input_op in lhs_inputs), *(input_op.output for input_op in rhs_inputs)],
+            implementation=PartialProductGeneratorImplementation.AND_GRID,
+            inputs=[lhs_value, rhs_value],
             output_names=ppg_output_names,
             owner="arith.partial_product_generator",
         )
         compressor = CompressorTreeOp(
-            implementation="dadda",
-            inputs=[*ppg.results, *(input_op.output for input_op in addend_inputs)],
+            implementation=CompressorTreeImplementation.DADDA,
+            inputs=[*ppg.results, addend_value],
             output_names=compressor_output_names,
-            output_types=[wire_type(output_port.width, name="ct_lhs"), wire_type(output_port.width, name="ct_rhs")],
+            output_types=[wire_type(output_width, name="ct_lhs"), wire_type(output_width, name="ct_rhs")],
             owner="arith.compressor_tree",
         )
         prefix = PrefixTreeOp(
-            implementation="kogge_stone",
+            implementation=PrefixTreeImplementation.KOGGE_STONE,
             inputs=list(compressor.results),
             output_names=prefix_output_names,
-            output_types=[wire_type(output_port.width, name=output_port.name)],
+            output_types=[wire_type(output_width, name=output_port)],
             owner="arith.prefix_tree",
         )
-        outputs = [OutputPortOp(value=prefix.results[0])]
 
+        if get_wire_width(prefix.results[0]) != output_width:
+            raise AssertionError("arith.prefix_tree output width must match arith.multiplier results")
         rewriter.replace_matched_op(
-            [
-                *lhs_inputs,
-                *rhs_inputs,
-                *addend_inputs,
-                ppg,
-                compressor,
-                prefix,
-                *outputs,
-            ],
+            [ppg, compressor, prefix],
+            new_results=tuple(prefix.results),
             safe_erase=True,
         )
 
@@ -230,6 +214,6 @@ class LowerMultiplierToArithPartsPass(ModulePass):
     def apply(self, ctx: Context, op: ModuleOp) -> None:
         del ctx
         PatternRewriteWalker(
-            LowerMultiplierToArithPartsPattern(op),
+            LowerMultiplierToArithPartsPattern(),
             apply_recursively=True,
         ).rewrite_module(op)

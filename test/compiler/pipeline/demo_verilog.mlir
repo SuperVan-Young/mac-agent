@@ -6,5 +6,9 @@
 // CHECK: XOR2x2_ASAP7_75t_R pt_b31_xor_sum
 // CHECK-NOT: assign D =
 "builtin.module"() ({
-  "arith.multiplier"() {implementation = "array"} : () -> ()
-}) {func_name = "mac16x16p32", input_ports = ["input:A:16", "input:B:16", "input:C:32"], output_ports = ["output:D:32"]} : () -> ()
+  "func.func"() ({
+  ^bb0(%0: !rtl.wire<"A":16>, %1: !rtl.wire<"B":16>, %2: !rtl.wire<"C":32>):
+    %3 = "arith.multiplier"(%0, %1, %2) {implementation = #arith.multiplier_impl<array>} : (!rtl.wire<"A":16>, !rtl.wire<"B":16>, !rtl.wire<"C":32>) -> !rtl.wire<"D":32>
+    "func.return"(%3) : (!rtl.wire<"D":32>) -> ()
+  }) {sym_name = "mac16x16p32", function_type = (!rtl.wire<"A":16>, !rtl.wire<"B":16>, !rtl.wire<"C":32>) -> !rtl.wire<"D":32>} : () -> ()
+}) : () -> ()

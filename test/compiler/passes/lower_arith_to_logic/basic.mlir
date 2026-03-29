@@ -16,5 +16,5 @@
   %2 = "logic.input"() : () -> !rtl.wire<"pp_0_2":1>
   %3 = "logic.input"() : () -> !rtl.wire<"pp_1_1":1>
   %4 = "logic.input"() : () -> !rtl.wire<"C[2]":1>
-  %5, %6 = "arith.compressor_tree"(%0, %1, %2, %3, %4) {implementation = "dadda", owner = "arith.compressor_tree"} : (!rtl.wire<"pp_0_1":1>, !rtl.wire<"pp_1_0":1>, !rtl.wire<"pp_0_2":1>, !rtl.wire<"pp_1_1":1>, !rtl.wire<"C[2]":1>) -> (!rtl.wire<"ct_lhs":2>, !rtl.wire<"ct_rhs":2>)
+  %5, %6 = "arith.compressor_tree"(%0, %1, %2, %3, %4) {implementation = #arith.compressor_impl<dadda>, owner = "arith.compressor_tree"} : (!rtl.wire<"pp_0_1":1>, !rtl.wire<"pp_1_0":1>, !rtl.wire<"pp_0_2":1>, !rtl.wire<"pp_1_1":1>, !rtl.wire<"C[2]":1>) -> (!rtl.wire<"ct_lhs":2>, !rtl.wire<"ct_rhs":2>)
 }) {func_name = "mac16x16p32", input_ports = ["input:A:4", "input:B:4"], output_ports = ["output:ct_lhs:2", "output:ct_rhs:2"]} : () -> ()
