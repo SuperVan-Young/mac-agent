@@ -72,7 +72,8 @@ conda install -p "${CONDA_PREFIX_PATH}" -c conda-forge python=3.10 pip iverilog 
 
 if [[ "${SKIP_INSTALL}" -eq 0 ]]; then
   echo "Installing OpenROAD from litex-hub"
-  conda install -p "${CONDA_PREFIX_PATH}" -c litex-hub -c conda-forge openroad -y
+  # The litex-hub binary links libfmt.so.8 but omits that ABI dependency.
+  conda install -p "${CONDA_PREFIX_PATH}" -c litex-hub -c conda-forge openroad 'fmt=8' -y
 else
   echo "Skipping OpenROAD install (--skip-install)"
 fi
@@ -82,9 +83,12 @@ if [[ "${SKIP_PYTHON}" -eq 0 ]]; then
     echo "ERROR: requirements file not found: ${REQUIREMENTS_PATH}" >&2
     exit 1
   fi
-  echo "Installing Python packages from: ${REQUIREMENTS_PATH}"
-  conda run -p "${CONDA_PREFIX_PATH}" python -m pip install --upgrade pip
-  conda run -p "${CONDA_PREFIX_PATH}" python -m pip install -r "${REQUIREMENTS_PATH}"
+  if grep -qE '^[[:space:]]*[^#[:space:]]' "${REQUIREMENTS_PATH}"; then
+    echo "Installing Python packages from: ${REQUIREMENTS_PATH}"
+    conda run -p "${CONDA_PREFIX_PATH}" python -m pip install -r "${REQUIREMENTS_PATH}"
+  else
+    echo "No third-party Python packages required."
+  fi
 else
   echo "Skipping Python package install (--skip-python)"
 fi

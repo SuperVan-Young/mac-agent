@@ -96,6 +96,10 @@ module tb_mac;
         end
 
         while (!$feof(fd)) begin
+`ifdef MAC_USE_CLK
+            // Drive away from the sampling edge to avoid racing DUT registers.
+            @(negedge clk);
+`endif
             rc = $fscanf(fd, "%s %h %h %h %h\n", vec_kind, A, B, C, exp_d);
             if (rc == 5) begin
 `ifdef MAC_USE_CLK
@@ -147,6 +151,7 @@ module tb_mac;
 
 `ifdef MAC_USE_CLK
         if (pipeline_latency > 0) begin
+            @(negedge clk);
             A = {`MAC_A_WIDTH{1'b0}};
             B = {`MAC_B_WIDTH{1'b0}};
             C = {`MAC_ACC_WIDTH{1'b0}};

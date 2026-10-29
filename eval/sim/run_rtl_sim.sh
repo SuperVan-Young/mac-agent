@@ -3,8 +3,8 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 SIM_DIR="${ROOT_DIR}/eval/sim"
-OUT_DIR="${ROOT_DIR}/results/fixed/sim"
-DUT_PATH="${ROOT_DIR}/rtl/baseline.v"
+OUT_DIR="${ROOT_DIR}/eval/results/baseline/sim"
+DUT_PATH="${ROOT_DIR}/rtl/baseline/baseline.synth.v"
 RANDOM_COUNT=5000
 SEED=1
 SEED_LIST=""
@@ -21,12 +21,12 @@ usage() {
 Usage: $0 [-d <dut_path>] [-n <random_count>] [-s <seed>] [-S <seed_list>] [-j <parallel_jobs>] [-o <out_dir>] [-a <a_width>] [-b <b_width>] [-w <acc_width>] [-p <pipeline_cycles>]
 
 Options:
-  -d  DUT file path (default: rtl/baseline.v)
+  -d  DUT file path (default: rtl/baseline/baseline.synth.v)
   -n  number of random vectors (default: 5000)
   -s  RNG seed (default: 1)
   -S  comma-separated RNG seed list; each seed launches one simulation
   -j  max parallel simulation jobs (default: number of seeds; 0 means auto)
-  -o  output directory (default: results/fixed/sim)
+  -o  output directory (default: eval/results/baseline/sim)
   -a  A input width (default: 16)
   -b  B input width (default: 16)
   -w  C/D accumulator width (default: 32)
@@ -89,19 +89,6 @@ fi
 if [[ ! -f "${DUT_PATH}" ]]; then
     echo "ERROR: DUT file not found: ${DUT_PATH}" >&2
     exit 2
-fi
-
-ROOT_CANDIDATE="${ROOT_DIR}/results/fixed/generated/mac16x16p32.v"
-RTL_CANDIDATE="${ROOT_DIR}/rtl/mac16x16p32.v"
-LEGACY_ROOT_CANDIDATE="${ROOT_DIR}/mac16x16p32.v"
-if [[ ! -f "${ROOT_CANDIDATE}" && -f "${LEGACY_ROOT_CANDIDATE}" ]]; then
-    ROOT_CANDIDATE="${LEGACY_ROOT_CANDIDATE}"
-fi
-if [[ -f "${ROOT_CANDIDATE}" && -f "${RTL_CANDIDATE}" ]] && ! cmp -s "${ROOT_CANDIDATE}" "${RTL_CANDIDATE}"; then
-    echo "WARN: candidate RTL copies differ:" >&2
-    echo "WARN:   using DUT=${DUT_PATH}" >&2
-    echo "WARN:   repo root copy=${ROOT_CANDIDATE}" >&2
-    echo "WARN:   rtl/ copy=${RTL_CANDIDATE}" >&2
 fi
 
 for int_arg in RANDOM_COUNT SEED PARALLEL_JOBS A_WIDTH B_WIDTH ACC_WIDTH PIPELINE_CYCLES; do

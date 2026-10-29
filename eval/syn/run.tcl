@@ -2,15 +2,15 @@
 #
 # Optional env vars:
 #   GENUS_TOP             (default: mac16x16p32)
-#   GENUS_RTL             (default: <repo>/rtl/baseline.v)
+#   GENUS_RTL             (default: <repo>/rtl/baseline/baseline.v)
 #   GENUS_LIB             (default: repo-local ASAP7 TT/RVT liberty bundle, colon-separated)
 #   GENUS_CLK_PERIOD      (default: 1.0, ns)
 #   GENUS_A_WIDTH         (default: 16)
 #   GENUS_B_WIDTH         (default: 16)
 #   GENUS_ACC_WIDTH       (default: 32)
 #   GENUS_PIPELINE_CYCLES (default: 1)
-#   GENUS_OUT_DIR         (default: eval/syn/outputs)
-#   GENUS_RPT_DIR         (default: eval/syn/reports)
+#   GENUS_OUT_DIR         (default: eval/results/baseline/syn/outputs)
+#   GENUS_RPT_DIR         (default: eval/results/baseline/syn/reports)
 #   GENUS_DRY_RUN         (default: 0; if 1, parse-only sanity mode)
 
 proc env_or_default {name default_value} {
@@ -31,7 +31,7 @@ set DEFAULT_LIB_FILES [join [list \
 ] ":"]
 
 set TOP_NAME      [env_or_default GENUS_TOP mac16x16p32]
-set RTL_FILE      [env_or_default GENUS_RTL [file join $repo_root rtl baseline.v]]
+set RTL_FILE      [env_or_default GENUS_RTL [file join $repo_root rtl baseline baseline.v]]
 set LIB_FILES_RAW [env_or_default GENUS_LIB $DEFAULT_LIB_FILES]
 set LIB_FILES     [split $LIB_FILES_RAW ":"]
 set CLK_PERIOD_NS [env_or_default GENUS_CLK_PERIOD 1.0]
@@ -39,8 +39,8 @@ set A_WIDTH       [env_or_default GENUS_A_WIDTH 16]
 set B_WIDTH       [env_or_default GENUS_B_WIDTH 16]
 set ACC_WIDTH     [env_or_default GENUS_ACC_WIDTH 32]
 set PIPELINE_CYCLES [env_or_default GENUS_PIPELINE_CYCLES 1]
-set OUT_DIR       [env_or_default GENUS_OUT_DIR [file join $script_dir outputs]]
-set RPT_DIR       [env_or_default GENUS_RPT_DIR [file join $script_dir reports]]
+set OUT_DIR       [env_or_default GENUS_OUT_DIR [file join $repo_root eval results baseline syn outputs]]
+set RPT_DIR       [env_or_default GENUS_RPT_DIR [file join $repo_root eval results baseline syn reports]]
 set DRY_RUN_FLAG  [env_or_default GENUS_DRY_RUN 0]
 set DRY_RUN       [expr {$DRY_RUN_FLAG in {1 true TRUE yes YES}}]
 

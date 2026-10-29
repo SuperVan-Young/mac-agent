@@ -1,24 +1,8 @@
-.rs_xuechenhao.tstamp
-
-# Python cache
 __pycache__/
 *.pyc
-
-# Simulation outputs
-sim/out/
-sim/out_*/
-
-# Evaluation outputs
-results/
-
-# Generated candidate netlist
-mac16x16p32.v
-
-# Synthesis and formal byproducts
+.pytest_cache/
+/eval/results/
 fv/
 genus.cmd
 genus.log
-
-# Generated baseline outputs
-syn/outputs/*.v
-syn/reports/*.rpt
+.rs_xuechenhao.tstamp
