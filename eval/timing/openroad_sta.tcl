@@ -92,7 +92,7 @@ eval [concat $report_cmd [list > $report_path]]
 
 set wns "NA"
 set tns "NA"
-set critical_delay "NA"
+set arrival_time_ns "NA"
 
 catch { set wns [string trim [report_worst_slack -max -digits 4]] }
 catch { set tns [string trim [report_tns -digits 4]] }
@@ -103,7 +103,7 @@ close $cfp
 foreach line [split $ctext "\n"] {
   if {[regexp {data arrival time} $line]} {
     if {[regexp {([-+]?[0-9]*\.?[0-9]+)} $line -> delay]} {
-      set critical_delay $delay
+      set arrival_time_ns $delay
       break
     }
   }
@@ -113,7 +113,7 @@ set fp [open $::env(TIMING_SUMMARY_REPORT) "w"]
 puts $fp "timing_status=complete"
 puts $fp "wns=$wns"
 puts $fp "tns=$tns"
-puts $fp "critical_delay=$critical_delay"
+puts $fp "arrival_time_ns=$arrival_time_ns"
 puts $fp "query_group_count=$group_count"
 puts $fp "query_report=$report_path"
 if {[info exists ::env(TIMING_QUERY_ENDPOINT_COUNT)] && $::env(TIMING_QUERY_ENDPOINT_COUNT) ne ""} {

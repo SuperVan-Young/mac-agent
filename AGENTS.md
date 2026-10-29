@@ -1,19 +1,22 @@
 # Agent Entry
 
-项目目标是让 agent 开发直接生成 MAC 门级网表的 EDA 工具，并在相同工艺与约束下超越商用综合工具的时序、面积表现。`eval/` 提供统一评测 harness，baseline 提供商用工具的比较基准。
+项目目标是让 agent 产生直接映射到特定 PDK 的 MAC Verilog 网表，在相同工艺与约束下探索超越商用综合结果的实现。可以直接编写网表，也可以开发生成器；验收对象是单个 Verilog 文件。
 
-本仓库评估整数 MAC：`D = A * B + C`，默认 unsigned 16×16→32，顶层 `mac16x16p32`。
+当前任务：`D = (A * B + C) mod 2^32`，unsigned 16×16+32→32，纯组合逻辑，顶层 `mac16x16p32`。
 
 ## 工作入口
 
-运行或修改评估流程、综合设计、排查 timing/area 时，使用仓库技能 [.agents/skills/mac-eval/SKILL.md](.agents/skills/mac-eval/SKILL.md)。
+运行或修改评估流程、综合设计、排查 timing/area 时，使用 [.agents/skills/mac-eval/SKILL.md](.agents/skills/mac-eval/SKILL.md)。
 
 ## 目录约定
 
 - `rtl/baseline/`：baseline 行为级源码与固定综合网表。
-- `eval/`：评估 harness，包括执行、配置、单次报告解析。
-- `results/`：不提交 Git 的运行产物；外部框架可通过 `RESULTS_DIR` 指定其他输出目录。
+- `eval/`：Python 评测 harness、任务配置、工具 Tcl。
+- `tests/`：统一存放 harness 与仿真回归测试。
+- `results/`：不提交 Git 的单次运行产物；外部框架负责迭代与排名。
 - `.agents/skills/`：随仓库维护的技能与参考资料。
 - `env/`：工具环境安装；`tech/`：工艺库。
 
-根 Makefile 是薄入口。`make all` 默认评估保存的 baseline 网表；`make syn` 显式重新综合。修改评估流程后运行受影响阶段，检查日志与报告的一致性。修改路径时同步更新脚本默认值及技能参考资料。
+正式入口是 `python eval/run.py candidate.v --harness-ref <commit>`；`--dev` 使用工作区 evaluator，结果不作为正式验收。单独综合使用 `python eval/syn/run.py`。baseline 与 candidate 走相同检查，正式配置来自所选提交。
+
+修改 harness 或仿真后运行 `python -m unittest discover -s tests -v`。更新接口时同步维护技能参考资料。

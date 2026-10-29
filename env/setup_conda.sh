@@ -67,8 +67,8 @@ else
   conda create -p "${CONDA_PREFIX_PATH}" python=3.10 -y
 fi
 
-echo "Installing base conda dependencies (python, pip, iverilog)"
-conda install -p "${CONDA_PREFIX_PATH}" -c conda-forge python=3.10 pip iverilog -y
+echo "Installing base conda dependencies (python, pip, iverilog, yosys)"
+conda install -p "${CONDA_PREFIX_PATH}" -c conda-forge python=3.10 pip iverilog yosys -y
 
 if [[ "${SKIP_INSTALL}" -eq 0 ]]; then
   echo "Installing OpenROAD from litex-hub"
@@ -97,6 +97,7 @@ echo "Tool versions in ${CONDA_PREFIX_PATH}:"
 conda run -p "${CONDA_PREFIX_PATH}" python --version
 conda run -p "${CONDA_PREFIX_PATH}" iverilog -V
 conda run -p "${CONDA_PREFIX_PATH}" vvp -V
+conda run -p "${CONDA_PREFIX_PATH}" yosys -V
 
 if conda list -p "${CONDA_PREFIX_PATH}" | grep -E '^openroad[[:space:]]' >/dev/null 2>&1; then
   conda run -p "${CONDA_PREFIX_PATH}" openroad -version

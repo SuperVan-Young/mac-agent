@@ -1,60 +1,14 @@
-# Timing 调试接口
+# Timing 排查
 
-本文档用于评估排查，说明如何查看比默认 `make timing` 更细的时序报告。
+完整评测输出 `timing/timing_summary.rpt`、`timing/critical_path.rpt`、`timing/sta.log` 和 `timing/constraints.sdc`。
 
-## 默认行为
-
-默认 `make timing` 只生成一份汇总报告和一份最差路径报告：
-
-- `results/baseline/eval_sta/timing_summary.rpt`
-- `results/baseline/eval_sta/critical_path.rpt`
-
-如果需要查看更多路径、或聚焦某些输入到输出的路径组合，请直接调用底层脚本。
-
-以下示例使用默认 baseline；先执行 `make timing` 生成 SDC。分析其他 DUT 时同步替换网表和结果路径。
-
-## 基本调用
+开发模式可以查询多条路径和指定端点：
 
 ```bash
-NETLIST_PATH="$(pwd)/rtl/baseline/baseline.synth.v" \
-LIBERTY_PATHS="$(make -s print-config | awk -F= '/^LIBERTY_PATHS=/{print $2}')" \
-SDC_PATH="$(pwd)/results/baseline/eval_sta/constraints.sdc" \
-TOP_MODULE=mac16x16p32 \
-TIMING_SUMMARY_REPORT="$(pwd)/results/baseline/eval_sta/timing_query_summary.rpt" \
-CRITICAL_PATH_REPORT="$(pwd)/results/baseline/eval_sta/critical_path.rpt" \
-bash eval/timing/run_timer.sh openroad \
-  --max-paths 5 \
-  --output-report "$(pwd)/results/baseline/eval_sta/top5_paths.rpt"
+python eval/run.py candidate.v --dev --stage timing --max-paths 5
+python eval/run.py candidate.v --dev --stage timing --from 'A[15],B[15]' --to 'D[31]' --max-paths 3
 ```
 
-## 指定端点范围
+指定查询额外写 `timing/query_paths.rpt`、`timing/query_summary.rpt` 和 `timing/query.log`。全设计测量仍先执行，筛选出的路径不会覆盖主指标。无需手动准备 SDC 或导出环境变量。
 
-如果要只看某些输入 pin 到某些输出 pin：
-
-```bash
-NETLIST_PATH="$(pwd)/rtl/baseline/baseline.synth.v" \
-LIBERTY_PATHS="$(make -s print-config | awk -F= '/^LIBERTY_PATHS=/{print $2}')" \
-SDC_PATH="$(pwd)/results/baseline/eval_sta/constraints.sdc" \
-TOP_MODULE=mac16x16p32 \
-TIMING_SUMMARY_REPORT="$(pwd)/results/baseline/eval_sta/timing_query_summary.rpt" \
-CRITICAL_PATH_REPORT="$(pwd)/results/baseline/eval_sta/critical_path.rpt" \
-bash eval/timing/run_timer.sh openroad \
-  --from 'A[15],B[15]' \
-  --to 'D[31]' \
-  --max-paths 3 \
-  --output-report "$(pwd)/results/baseline/eval_sta/a15_b15_to_d31.rpt"
-```
-
-## 常用参数
-
-- `--max-paths N`：输出前 `N` 条路径
-- `--endpoint-count N`：限制 endpoint 数量
-- `--from`：指定起点 pin/port，逗号分隔
-- `--to`：指定终点 pin/port，逗号分隔
-- `--output-report`：指定详细报告输出文件
-
-## 适用场景
-
-- 默认最差路径不够，想多看几条 path
-- 想比较不同输入 pin 到输出 pin 的组合
-- 想确认优化是不是只改善了一条局部路径
+查看路径时区分输入外部延迟、cell 延迟和 data arrival time。`arrival_time_ns` 包含输入 delay；默认无提取寄生，报告不能解释为 post-route 性能。比较不同候选时固定配置与工具版本。

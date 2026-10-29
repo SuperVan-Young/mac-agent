@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "task": "mac-u16-u16-u32",
+  "top": "mac16x16p32",
+  "ports": {"A": ["input", 16], "B": ["input", 16], "C": ["input", 32], "D": ["output", 32]},
+  "tool_prefix": "/tmp/mac-agent-openroad-env",
+  "liberty": [
+    "tech/asap7/lib/NLDM/asap7sc7p5t_AO_RVT_TT_nldm_211120.lib",
+    "tech/asap7/lib/NLDM/asap7sc7p5t_INVBUF_RVT_TT_nldm_220122.lib",
+    "tech/asap7/lib/NLDM/asap7sc7p5t_OA_RVT_TT_nldm_211120.lib",
+    "tech/asap7/lib/NLDM/asap7sc7p5t_SIMPLE_RVT_TT_nldm_211120.lib",
+    "tech/asap7/lib/NLDM/asap7sc7p5t_SEQ_RVT_TT_nldm_220123.lib"
+  ],
+  "combinational_liberty_count": 4,
+  "lef": [
+    "tech/asap7/lef/asap7_tech_1x_201209.lef",
+    "tech/asap7/lef/asap7sc7p5t_28_L_1x_220121a.lef",
+    "tech/asap7/lef/asap7sc7p5t_28_R_1x_220121a.lef",
+    "tech/asap7/lef/asap7sc7p5t_28_SL_1x_220121a.lef",
+    "tech/asap7/lef/asap7sc7p5t_DFFHQNH2V2X.lef",
+    "tech/asap7/lef/asap7sc7p5t_DFFHQNV2X.lef",
+    "tech/asap7/lef/asap7sc7p5t_DFFHQNV4X.lef"
+  ],
+  "timing": {"period_ns": 1.0, "input_delay_ns": 0.1, "output_delay_ns": 0.1},
+  "simulation": {"random_count": 5000, "seeds": [1], "jobs": 1},
+  "timeouts_sec": {"check": 120, "sim": 120, "timing": 120, "area": 120, "syn": 1800},
+  "limits": {"min_wns_ns": 0.0, "max_area_um2": null}
+}
