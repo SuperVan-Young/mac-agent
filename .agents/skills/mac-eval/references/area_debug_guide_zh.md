@@ -6,9 +6,9 @@
 
 默认 `make area` 只生成评估和汇总需要的基础产物：
 
-- `eval/results/baseline/eval_sta/design_area.rpt`
-- `eval/results/baseline/eval_sta/cell_usage.rpt`
-- `eval/results/baseline/area.json`
+- `results/baseline/eval_sta/design_area.rpt`
+- `results/baseline/eval_sta/cell_usage.rpt`
+- `results/baseline/area.json`
 
 其中 `area.json` 仍然只包含总面积、utilization、cell usage count 和总 cell count，适合做固定指标比较。
 

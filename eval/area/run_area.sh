@@ -58,7 +58,7 @@ conda run -p "${OPENROAD_CONDA_PREFIX}" openroad \
   -no_init \
   -exit \
   -log "${AREA_LOG}" \
-  "${SCRIPT_DIR}/templates/openroad_area.tcl" >/dev/null 2>&1
+  "${SCRIPT_DIR}/openroad_area.tcl" >/dev/null 2>&1
 
 if [[ "${AREA_DETAIL_ENABLE}" == "1" ]]; then
   python3 "${SCRIPT_DIR}/openroad_area_report.py" \

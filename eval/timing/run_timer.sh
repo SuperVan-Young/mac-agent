@@ -112,7 +112,7 @@ case "${TOOL}" in
   openroad)
     command -v conda >/dev/null 2>&1 || die "conda not found in PATH"
     [[ -x "${OPENROAD_CONDA_PREFIX}/bin/sta" ]] || die "Missing ${OPENROAD_CONDA_PREFIX}/bin/sta"
-    conda run -p "${OPENROAD_CONDA_PREFIX}" sta "${SCRIPT_DIR}/templates/openroad_sta.tcl"
+    conda run -p "${OPENROAD_CONDA_PREFIX}" sta "${SCRIPT_DIR}/openroad_sta.tcl"
     ;;
   *)
     die "Unsupported timing tool: ${TOOL} (expected: openroad)"

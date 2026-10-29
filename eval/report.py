@@ -167,7 +167,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--design-name", required=True, help="Summary design name")
     parser.add_argument("--design-type", required=True, choices=["baseline", "candidate"])
     parser.add_argument("--top", default="mac16x16p32", help="Top module name")
-    parser.add_argument("--results-dir", type=Path, help="Override eval/results/<design_name> output dir")
+    parser.add_argument("--results-dir", type=Path, help="Override results/<design_name> output dir")
     parser.add_argument("--sim-log", type=Path, help="Simulation log path")
     parser.add_argument("--timing-summary", type=Path, help="Timing summary report path")
     parser.add_argument("--critical-path", type=Path, help="Critical path report path")

@@ -1,7 +1,7 @@
 __pycache__/
 *.pyc
 .pytest_cache/
-/eval/results/
+/results/
 fv/
 genus.cmd
 genus.log

@@ -9,8 +9,8 @@
 #   GENUS_B_WIDTH         (default: 16)
 #   GENUS_ACC_WIDTH       (default: 32)
 #   GENUS_PIPELINE_CYCLES (default: 1)
-#   GENUS_OUT_DIR         (default: eval/results/baseline/syn/outputs)
-#   GENUS_RPT_DIR         (default: eval/results/baseline/syn/reports)
+#   GENUS_OUT_DIR         (default: results/baseline/syn/outputs)
+#   GENUS_RPT_DIR         (default: results/baseline/syn/reports)
 #   GENUS_DRY_RUN         (default: 0; if 1, parse-only sanity mode)
 
 proc env_or_default {name default_value} {
@@ -39,8 +39,8 @@ set A_WIDTH       [env_or_default GENUS_A_WIDTH 16]
 set B_WIDTH       [env_or_default GENUS_B_WIDTH 16]
 set ACC_WIDTH     [env_or_default GENUS_ACC_WIDTH 32]
 set PIPELINE_CYCLES [env_or_default GENUS_PIPELINE_CYCLES 1]
-set OUT_DIR       [env_or_default GENUS_OUT_DIR [file join $repo_root eval results baseline syn outputs]]
-set RPT_DIR       [env_or_default GENUS_RPT_DIR [file join $repo_root eval results baseline syn reports]]
+set OUT_DIR       [env_or_default GENUS_OUT_DIR [file join $repo_root results baseline syn outputs]]
+set RPT_DIR       [env_or_default GENUS_RPT_DIR [file join $repo_root results baseline syn reports]]
 set DRY_RUN_FLAG  [env_or_default GENUS_DRY_RUN 0]
 set DRY_RUN       [expr {$DRY_RUN_FLAG in {1 true TRUE yes YES}}]
 

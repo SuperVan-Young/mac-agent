@@ -3,7 +3,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 SIM_DIR="${ROOT_DIR}/eval/sim"
-OUT_DIR="${ROOT_DIR}/eval/results/baseline/sim"
+OUT_DIR="${ROOT_DIR}/results/baseline/sim"
 DUT_PATH="${ROOT_DIR}/rtl/baseline/baseline.synth.v"
 RANDOM_COUNT=5000
 SEED=1
@@ -26,7 +26,7 @@ Options:
   -s  RNG seed (default: 1)
   -S  comma-separated RNG seed list; each seed launches one simulation
   -j  max parallel simulation jobs (default: number of seeds; 0 means auto)
-  -o  output directory (default: eval/results/baseline/sim)
+  -o  output directory (default: results/baseline/sim)
   -a  A input width (default: 16)
   -b  B input width (default: 16)
   -w  C/D accumulator width (default: 32)

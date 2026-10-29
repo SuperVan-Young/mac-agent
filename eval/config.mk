@@ -5,7 +5,7 @@ DESIGN_TYPE ?= baseline
 TOP_MODULE ?= mac16x16p32
 DUT ?= $(REPO_ROOT)/rtl/baseline/baseline.synth.v
 SYN_RTL ?= $(REPO_ROOT)/rtl/baseline/baseline.v
-FLOW_RESULTS_ROOT ?= $(REPO_ROOT)/eval/results/$(DESIGN_NAME)
+FLOW_RESULTS_ROOT ?= $(REPO_ROOT)/results/$(DESIGN_NAME)
 
 # Baseline configurable MAC shape.
 # Candidate flows remain on the canonical 16x16->32 interface by default.

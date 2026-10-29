@@ -122,7 +122,7 @@ area-debug: sim
 	  bash "$(REPO_ROOT)/eval/area/run_area.sh"
 
 summary: timing area
-	@python3 "$(REPO_ROOT)/eval/summary/parse_reports.py" \
+	@python3 "$(REPO_ROOT)/eval/report.py" \
 	  --design-name "$(DESIGN_NAME)" \
 	  --design-type "$(DESIGN_TYPE)" \
 	  --top "$(TOP_MODULE)" \
